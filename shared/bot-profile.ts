@@ -1,13 +1,11 @@
 /** Profile input limits shared by every web and server write surface.
- * name, title, description, and voice are character counts. soul is a
- * UTF-8 byte budget: it rides the system prompt on every turn, and what
- * that costs is bytes, not glyphs. */
+ * name, title, description, voice, and soul are character counts. */
 export const BOT_PROFILE_LIMITS = {
   name: 100,
   title: 200,
   description: 4000,
   voice: 200,
-  soul: 24_000,
+  soul: 60_000,
 } as const;
 
 /** A name or title is quoted inside prompts and cards as one line, so text that

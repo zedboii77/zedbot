@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { mascotFaceColorSchema } from "./bot-avatar.ts";
+import { BOT_PROFILE_LIMITS } from "./bot-profile.ts";
 
 import { CONNECTOR_SLUG_PATTERN, CONNECTOR_TOOL_NAME_PATTERN, MAUS_COLOR_NAMES } from "./wire.ts";
 import { parseToolScope, type ToolScope } from "./tool-scope.ts";
@@ -114,9 +115,8 @@ const backupSchema = z.object({
     ...owner,
     title: z.string().max(2_000),
     description: z.string().max(200_000),
-    // Same UTF-8 limit as the profile editor (this schema also runs in the browser).
-    soul: z.string().refine((value) => new TextEncoder().encode(value).byteLength <= 24_000, {
-      error: "standing instructions must be at most 24000 bytes",
+    soul: z.string().max(BOT_PROFILE_LIMITS.soul, {
+      error: `standing instructions must be at most ${BOT_PROFILE_LIMITS.soul} characters`,
     }).optional(),
     color,
     mascotExpression: z.string().max(80).optional(),

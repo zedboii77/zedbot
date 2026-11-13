@@ -47,15 +47,14 @@ describe("firstSentence", () => {
 });
 
 describe("soulPatchFor", () => {
-  it("returns a patch for a draft exactly at the byte limit", () => {
-    const value = "a".repeat(10);
+  it("returns a patch for a draft exactly at the character limit, even with multi-byte characters", () => {
+    const value = `${"a".repeat(9)}é`;
+    expect(value.length).toBe(10);
     expect(soulPatchFor(value, 10)).toEqual({ soul: value });
   });
 
-  it("returns null one byte over the limit, even via a multi-byte character", () => {
-    // "é" is 2 bytes; 9 ascii bytes + 2 = 11, one over a limit of 10.
-    const value = `${"a".repeat(9)}é`;
-    expect(utf8Bytes(value)).toBe(11);
+  it("returns null one character over the limit", () => {
+    const value = "a".repeat(11);
     expect(soulPatchFor(value, 10)).toBeNull();
   });
 

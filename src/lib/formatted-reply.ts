@@ -20,6 +20,12 @@ export function formattedReplyWidth(text: string): string {
     : "w-full max-w-[min(var(--chat-prose-max),var(--chat-card-pct))]";
 }
 
+export function openChamberReplyWidth(text: string): string {
+  return TABLE_DIVIDER.test(text)
+    ? "chat-wide w-full"
+    : "w-full max-w-[var(--chat-prose-max)]";
+}
+
 export interface ReplyBlock {
   kind: "prose" | "table";
   text: string;

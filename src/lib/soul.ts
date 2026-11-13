@@ -10,5 +10,5 @@ export function firstSentence(text: string, max = 200): string {
 }
 
 export function soulPatchFor(value: string, limit: number): { soul: string } | null {
-  return utf8Bytes(value) > limit ? null : { soul: value };
+  return value.length > limit ? null : { soul: value };
 }

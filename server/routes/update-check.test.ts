@@ -70,4 +70,40 @@ describe("update check route", () => {
     expect(await refused.json()).toMatchObject({ code: "admin_only" });
     expect(asked).toEqual(["status", "request"]);
   });
+
+  it("skips upstream checks and refuses server update requests when disabled", async () => {
+    let checked = false;
+    let requested = false;
+    const routes = [createUpdateCheckRoutes({
+      check: async () => { checked = true; return { current: "0.1.155", install: "git", available: true }; },
+      server: {
+        status: async () => ({ mode: "button", current: "0.1.155", available: true, activeTurns: 0 }),
+        request: async () => { requested = true; return { status: 202, body: { ok: true } }; },
+      },
+      enabled: () => false,
+      disabledCheck: () => ({ current: "0.1.155", install: "git", available: false }),
+    })];
+    const admin = { kind: "session", session: {}, via: "cookie", scopes: ["admin", "client"] } as unknown as RequestAuth;
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      await dispatchRoutes(routes, { req, res, url, path: url.pathname, method: req.method ?? "GET", auth: admin, json, readBody });
+    });
+    servers.push(server);
+    await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+    const checkRes = await fetch(`${base}/api/updates/check`);
+    expect(checkRes.status).toBe(200);
+    expect(await checkRes.json()).toEqual({ current: "0.1.155", install: "git", available: false });
+    expect(checked).toBe(false);
+
+    const statusRes = await fetch(`${base}/api/updates/server`);
+    expect(statusRes.status).toBe(200);
+    expect(await statusRes.json()).toMatchObject({ mode: "none", available: false, activeTurns: 0 });
+
+    const postRes = await fetch(`${base}/api/updates/server`, { method: "POST" });
+    expect(postRes.status).toBe(403);
+    expect(await postRes.json()).toMatchObject({ code: "updates_disabled" });
+    expect(requested).toBe(false);
+  });
 });

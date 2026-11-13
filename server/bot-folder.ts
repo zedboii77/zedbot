@@ -37,18 +37,22 @@ export function readSoulDrift(botId: string, soul: string, hash: string): SoulDr
   try {
     const fd = openSync(soulFile(botId), "r");
     try {
-      // External edits are unbounded: read at most the budget plus one byte.
-      const bytes = Buffer.alloc(BOT_PROFILE_LIMITS.soul + 1);
+      // External edits are unbounded: read at most the max UTF-8 encoding of the character budget plus one byte.
+      const maxReadBytes = BOT_PROFILE_LIMITS.soul * 4;
+      const bytes = Buffer.alloc(maxReadBytes + 1);
       let length = 0;
       while (length < bytes.length) {
         const count = readSync(fd, bytes, length, bytes.length - length, null);
         if (!count) break;
         length += count;
       }
-      if (length > BOT_PROFILE_LIMITS.soul) {
-        throw Object.assign(new Error("SOUL.md exceeds 24000 bytes; shorten it in your editor"), { status: 400 });
+      if (length > maxReadBytes) {
+        throw Object.assign(new Error(`SOUL.md exceeds ${BOT_PROFILE_LIMITS.soul} characters; shorten it in your editor`), { status: 400 });
       }
       fileText = bytes.subarray(0, length).toString("utf8");
+      if (fileText.length > BOT_PROFILE_LIMITS.soul) {
+        throw Object.assign(new Error(`SOUL.md exceeds ${BOT_PROFILE_LIMITS.soul} characters; shorten it in your editor`), { status: 400 });
+      }
     } finally { closeSync(fd); }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;

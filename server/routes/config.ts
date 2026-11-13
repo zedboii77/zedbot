@@ -109,6 +109,7 @@ export interface ConfigRouteDeps {
   reloadProviders(before: Record<string, unknown>): Promise<void>;
   broadcast(payload: Record<string, unknown>): void;
   drainQueuedSends(): void;
+  syncAutoUpdate?(): void;
   /** Postiz: a key is checked at its address before it is saved, and the `postiz` server follows the saved key. */
   postiz?: Pick<Postiz, "configCheck" | "configSaved">;
 }
@@ -666,6 +667,9 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
           broadcast({ kind: "config", ...status });
           if (patch.threads !== undefined) {
             drainQueuedSends();
+          }
+          if (patch.features?.autoUpdate !== undefined) {
+            deps.syncAutoUpdate?.();
           }
           if (mandatoryError) throw mandatoryError;
           return status;

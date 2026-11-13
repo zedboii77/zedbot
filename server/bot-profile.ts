@@ -52,8 +52,8 @@ export const profilePatchSchema = z.object({
     .optional(),
   soul: z
     .string({ error: "soul must be a string" })
-    .refine((value) => Buffer.byteLength(value, "utf8") <= BOT_PROFILE_LIMITS.soul, {
-      error: "standing instructions must be at most 24000 bytes",
+    .max(BOT_PROFILE_LIMITS.soul, {
+      error: `standing instructions must be at most ${BOT_PROFILE_LIMITS.soul} characters`,
     })
     .optional(),
   notifications: z.boolean({ error: "notifications must be true or false" }).optional(),

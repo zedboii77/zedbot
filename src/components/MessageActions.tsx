@@ -43,12 +43,14 @@ function focusVisible(target: EventTarget | null): boolean {
 export function MessageActions({
   side,
   forceOpen = false,
+  touchVisible = false,
   className,
   menu: items = [],
   children,
 }: {
   side: "user" | "bot";
   forceOpen?: boolean;
+  touchVisible?: boolean;
   className?: string;
   menu?: MessageMenuItem[];
   children?: ReactNode;
@@ -175,6 +177,7 @@ export function MessageActions({
         className,
       )}
       data-testid="message-actions"
+      data-touch-actions={touchVisible ? "" : undefined}
       inert={streaming || undefined}
       data-shown={shown ? "true" : undefined}
       onKeyDown={(event) => {

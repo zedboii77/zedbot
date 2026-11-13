@@ -26,28 +26,31 @@ export function useThreadOpenedAt(threadId: string): number {
   return opened.current.at;
 }
 
-export function ConversationalReply({ segments, firstNew, citation, renderSegment, simple = false, join }: {
+export function ConversationalReply({ segments, firstNew, citation, renderSegment, simple = false, openChamber = false, join }: {
   segments: readonly string[];
   firstNew: number;
   citation: { messageId: string; botId: string; threadId: string };
   renderSegment: (segment: string) => ReactNode;
   /** Simple mode: each part is a full bot bubble, joined to its neighbours as one group. */
   simple?: boolean;
+  openChamber?: boolean;
   /** Simple mode: whether the reply's first and last parts meet the bubbles around the message. */
   join?: BubbleJoin;
 }) {
   return (
-    <div data-conversational-reply className="flex w-full flex-col items-start gap-1" data-citation-source={citation.messageId} data-citation-owner-type="bot" data-citation-owner={citation.botId} data-citation-thread={citation.threadId}>
+    <div data-conversational-reply className={cn("flex w-full flex-col items-start", openChamber ? "gap-2.5" : "gap-1")} data-citation-source={citation.messageId} data-citation-owner-type="bot" data-citation-owner={citation.botId} data-citation-thread={citation.threadId}>
       {segments.map((segment, index) => (
         <div
           key={index}
           data-reply-segment
           dir="auto"
           className={cn(
-            simple
-              ? cn(SIMPLE_BOT_BUBBLE, "w-fit max-w-full [overflow-wrap:anywhere]",
-                joinedCorners("start", { above: index > 0 || Boolean(join?.above), below: index < segments.length - 1 || Boolean(join?.below) }))
-              : "reply-bubble",
+            openChamber
+              ? "w-full min-w-0 [overflow-wrap:anywhere]"
+              : simple
+                ? cn(SIMPLE_BOT_BUBBLE, "w-fit max-w-full [overflow-wrap:anywhere]",
+                  joinedCorners("start", { above: index > 0 || Boolean(join?.above), below: index < segments.length - 1 || Boolean(join?.below) }))
+                : "reply-bubble",
             index >= firstNew && "reply-bubble-in",
           )}
           style={index >= firstNew ? { animationDelay: `${(index - firstNew) * 120}ms` } : undefined}

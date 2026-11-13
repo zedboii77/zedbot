@@ -147,8 +147,8 @@ function parseChanges(input: unknown): ProfileRequestChanges {
     const redacted = redactSecretsInText(value);
     // A redaction mask can be longer than the secret, so the cap is checked again after scrubbing.
     if (field === "soul") {
-      if (Buffer.byteLength(redacted, "utf8") > BOT_PROFILE_LIMITS.soul) {
-        throw new ProfileRequestError("standing instructions must be at most 24000 bytes");
+      if (redacted.length > BOT_PROFILE_LIMITS.soul) {
+        throw new ProfileRequestError(`standing instructions must be at most ${BOT_PROFILE_LIMITS.soul} characters`);
       }
     } else {
       const limit = BOT_PROFILE_LIMITS[field];

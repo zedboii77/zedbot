@@ -13,11 +13,13 @@ export function BubbleEditor({
   onCancel,
   onSubmit,
   bubbleStyle,
+  openChamber = false,
 }: {
   initial: string;
   onCancel: () => void;
   onSubmit: (text: string) => void;
   bubbleStyle?: ReturnType<typeof userBubbleStyle>;
+  openChamber?: boolean;
 }) {
   const simple = !useAdvancedMode();
   const [draft, setDraft] = useState(initial);
@@ -34,10 +36,12 @@ export function BubbleEditor({
   };
   return (
     <div
-      data-chat-bubble={simple ? "simple" : ""}
+      data-chat-bubble={openChamber ? "openchamber" : simple ? "simple" : ""}
       className={cn(
         "w-full",
-        simple ? cn(SIMPLE_BUBBLE_MAX, SIMPLE_USER_BUBBLE, "py-2") : "max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct))] rounded-2xl border border-hairline/40 bg-bubble-user px-4 py-3",
+        openChamber
+          ? "max-w-[min(85%,var(--chat-bubble-max))] rounded-[18px] rounded-ee-[6px] border border-hairline/40 bg-bubble-user px-4 py-2.5"
+          : simple ? cn(SIMPLE_BUBBLE_MAX, SIMPLE_USER_BUBBLE, "py-2") : "max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct))] rounded-2xl border border-hairline/40 bg-bubble-user px-4 py-3",
         bubbleStyle && "user-bubble-colored",
       )}
       style={bubbleStyle}

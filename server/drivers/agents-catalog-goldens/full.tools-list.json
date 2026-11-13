@@ -1861,7 +1861,7 @@
           },
           "soul": {
             "type": "string",
-            "description": "Full replacement text for SOUL.md, at most 24000 bytes."
+            "description": "Full replacement text for SOUL.md, at most 60000 characters."
           },
           "cwd": {
             "type": "string",

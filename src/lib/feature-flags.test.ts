@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { builtInBrowserEnabled, llmThreadTitlesEnabled, parseSkillReviewSteps, roomMemoryCaptureEnabled, savedStepsEnabled, shareLearnedSkillsMode, sharedComputersEnabled, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines, usbPhoneTakeoverEnabled } from "./feature-flags";
+import { builtInBrowserEnabled, conversationStyleMode, isOpenChamberConversation, llmThreadTitlesEnabled, parseSkillReviewSteps, reasoningCollapseMode, roomMemoryCaptureEnabled, savedStepsEnabled, shareLearnedSkillsMode, sharedComputersEnabled, showReasoningEnabled, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines, usbPhoneTakeoverEnabled } from "./feature-flags";
 
 describe("experimental feature flags", () => {
   it("keeps skill authoring on by default, before and after the config arrives", () => {
@@ -103,5 +103,33 @@ describe("saved steps flag", () => {
     expect(savedStepsEnabled(null)).toBe(true);
     expect(savedStepsEnabled({ features: {} })).toBe(true);
     expect(savedStepsEnabled({ features: { savedSteps: false } })).toBe(false);
+  });
+});
+
+describe("thinking block flags", () => {
+  it("defaults to hidden and auto-collapse", () => {
+    expect(showReasoningEnabled(null)).toBe(false);
+    expect(showReasoningEnabled({})).toBe(false);
+    expect(showReasoningEnabled({ features: { showReasoning: true } })).toBe(true);
+    expect(reasoningCollapseMode(null)).toBe("auto");
+    expect(reasoningCollapseMode({})).toBe("auto");
+    expect(reasoningCollapseMode({ features: { reasoningCollapse: "auto" } })).toBe("auto");
+    expect(reasoningCollapseMode({ features: { reasoningCollapse: "manual" } })).toBe("manual");
+  });
+});
+
+describe("conversation style flags", () => {
+  it("defaults to bubbles and resolves mobile vs openchamber cleanly", () => {
+    expect(conversationStyleMode(null)).toBe("bubbles");
+    expect(conversationStyleMode({})).toBe("bubbles");
+    expect(conversationStyleMode({ features: { conversationStyle: "openchamber" } })).toBe("openchamber");
+    expect(conversationStyleMode({ features: { conversationStyle: "mobile" } })).toBe("mobile");
+
+    expect(isOpenChamberConversation("bubbles", false)).toBe(false);
+    expect(isOpenChamberConversation("bubbles", true)).toBe(false);
+    expect(isOpenChamberConversation("openchamber", false)).toBe(true);
+    expect(isOpenChamberConversation("openchamber", true)).toBe(true);
+    expect(isOpenChamberConversation("mobile", false)).toBe(false);
+    expect(isOpenChamberConversation("mobile", true)).toBe(true);
   });
 });

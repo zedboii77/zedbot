@@ -306,13 +306,6 @@ function shortHash(value: string): number {
   return hash;
 }
 
-function fitBytes(text: string, max: number): string {
-  if (utf8Bytes(text) <= max) return text;
-  let end = Math.min(text.length, max);
-  while (end > 0 && utf8Bytes(text.slice(0, end)) > max) end = Math.floor(end * 0.95);
-  return text.slice(0, end);
-}
-
 const CLOCK_TRIGGERS = new Set(["", "schedule", "scheduled", "time", "cron", "interval"]);
 
 /** The schedule in the routine's own zone, or the person's when it names one nothing here can read, from its cron or its
@@ -421,7 +414,7 @@ export function grokMovePlan(bot: GrokBot, options: { timeZone?: string; takenSe
   const timeZone = options.timeZone?.trim() || "UTC";
   const name = clip(bot.name || "Grok Bot", 100);
   const agentKey = slug(name, 60) || "grok-bot";
-  const soul = fitBytes(bot.instructions.trim(), BOT_PROFILE_LIMITS.soul);
+  const soul = bot.instructions.trim().slice(0, BOT_PROFILE_LIMITS.soul).replace(/[\uD800-\uDBFF]$/u, "");
 
   const skillNames = new Set<string>();
   const skillSlugs = new Map<string, string>();

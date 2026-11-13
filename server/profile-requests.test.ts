@@ -202,7 +202,7 @@ describe("ProfileRequestService", () => {
       () => service.propose({ botId: bot.id, threadId: bot.threadId, changes, reason });
     expect(attempt({ voice: "alloy" })).toThrow("unsupported profile field: voice");
     expect(attempt({ autoApprove: true })).toThrow("unsupported profile field: autoApprove");
-    expect(attempt({ soul: "x".repeat(24_001) })).toThrow("standing instructions must be at most 24000 bytes");
+    expect(attempt({ soul: "x".repeat(60_001) })).toThrow("standing instructions must be at most 60000 characters");
     expect(attempt({ name: "Kiwi" }, "")).toThrow("reason is required");
     expect(attempt({})).toThrow("Choose at least one of name, title, description, soul, cwd, notifications, speakReplies");
     expect(attempt({ name: "Scout" })).toThrow("Nothing would change");
@@ -265,11 +265,11 @@ describe("ProfileRequestService", () => {
     const { service, bot } = harness({ name: "Scout" });
     // "token: sk-ant-AAAAAAAA" masks to "token: «redacted 15 chars»" (+6 bytes); the raw value sits exactly at the cap, so only redaction growth pushes it over.
     const secretish = "token: sk-ant-AAAAAAAA";
-    const filler = "x".repeat(24_000 - secretish.length - 1);
+    const filler = "x".repeat(60_000 - secretish.length - 1);
     const soul = `${filler}\n${secretish}`;
-    expect(Buffer.byteLength(soul, "utf8")).toBe(24_000);
+    expect(soul.length).toBe(60_000);
     expect(() => service.propose({ botId: bot.id, threadId: bot.threadId, changes: { soul }, reason: "r" }))
-      .toThrow("standing instructions must be at most 24000 bytes");
+      .toThrow("standing instructions must be at most 60000 characters");
   });
 
   it("applies only on confirm, through patchBot and setSoul, records history, and settles the card", async () => {

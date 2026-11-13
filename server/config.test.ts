@@ -30,6 +30,10 @@ import { cacheUntilConfigChanges,
   threadEventLogMaxBytes,
   threadEventLogRetentionDays,
   showToolCallsEnabled,
+  showReasoningEnabled,
+  reasoningCollapseMode,
+  conversationStyleMode,
+  autoUpdateEnabled,
   saveConfig,
   skillAuthoringEnabled,
   sharedComputersEnabled,
@@ -685,6 +689,34 @@ describe("configuration boundaries", () => {
       features: { showToolCalls: true },
     });
     expect(showToolCallsEnabled({ features: { showToolCalls: true } })).toBe(true);
+  });
+
+  it("keeps thinking blocks off and auto-collapse by default and accepts explicit choices", () => {
+    expect(showReasoningEnabled({})).toBe(false);
+    expect(reasoningCollapseMode({})).toBe("auto");
+    expect(parseConfigPatch({ features: { showReasoning: true, reasoningCollapse: "manual" } })).toEqual({
+      features: { showReasoning: true, reasoningCollapse: "manual" },
+    });
+    expect(showReasoningEnabled({ features: { showReasoning: true } })).toBe(true);
+    expect(reasoningCollapseMode({ features: { reasoningCollapse: "manual" } })).toBe("manual");
+    expect(reasoningCollapseMode({ features: { reasoningCollapse: "auto" } })).toBe("auto");
+    expect(() => parseConfigPatch({ features: { reasoningCollapse: "always" } })).toThrow("features.reasoningCollapse");
+  });
+
+  it("keeps conversationStyle at bubbles by default and validates explicit modes", () => {
+    expect(conversationStyleMode({})).toBe("bubbles");
+    expect(parseConfigPatch({ features: { conversationStyle: "openchamber" } })).toEqual({ features: { conversationStyle: "openchamber" } });
+    expect(parseConfigPatch({ features: { conversationStyle: "mobile" } })).toEqual({ features: { conversationStyle: "mobile" } });
+    expect(conversationStyleMode({ features: { conversationStyle: "openchamber" } })).toBe("openchamber");
+    expect(conversationStyleMode({ features: { conversationStyle: "mobile" } })).toBe("mobile");
+    expect(() => parseConfigPatch({ features: { conversationStyle: "compact" } })).toThrow("features.conversationStyle");
+  });
+
+  it("keeps autoUpdate on by default and lets config or env disable it", () => {
+    expect(autoUpdateEnabled({}, {})).toBe(true);
+    expect(parseConfigPatch({ features: { autoUpdate: false } })).toEqual({ features: { autoUpdate: false } });
+    expect(autoUpdateEnabled({ features: { autoUpdate: false } }, {})).toBe(false);
+    expect(autoUpdateEnabled({ features: { autoUpdate: true } }, { OMB_DISABLE_AUTO_UPDATE: "1" })).toBe(false);
   });
 
   it.each([0, 1.5, 9, "2", null])("rejects an invalid per-bot VM limit: %j", (maxInstances) => {

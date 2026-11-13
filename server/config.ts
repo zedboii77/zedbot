@@ -33,6 +33,8 @@ import { browserEngineConfigSchema, isValidCdpTarget, type BrowserEngineConfig }
 import { roomContextSettings } from "./room-context-settings.ts";
 import { localVmConfigSchema } from "./local-vm-settings.ts";
 export * from "./local-vm-settings.ts";
+import { featureConfigSchema, type FeatureConfig } from "./config-features.ts";
+export * from "./config-features.ts";
 
 const optionalText = z.string().optional();
 const SSH_ALIAS = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
@@ -214,37 +216,6 @@ const browserProfilesSchema = z.array(browserProfileSchema).max(20).superRefine(
     });
   });
 });
-// Not strict: a stale client's unknown flag must be dropped, not fail the whole config.
-const featureConfigSchema = z.object({
-  /** Bots may draft skills for your review. On unless false. */
-  skillAuthoring: z.boolean().optional(),
-  /** The bot's engine reviews long conversations and updates its learned skills. Off unless true; needs skillAuthoring. */
-  skillReview: z.boolean().optional(),
-  /** Tool steps in one conversation between automatic reviews. */
-  skillReviewSteps: z.number().int().min(3).max(100).optional(),
-  /** Show each tool run in the transcript. Off unless explicitly enabled. */
-  showToolCalls: z.boolean().optional(),
-  /** Built-in browser. On unless false; each bot also has its own switch. */
-  browser: z.boolean().optional(),
-  /** Computer sharing. Off unless true, set by hand: there is no Settings toggle. */
-  sharedComputers: z.boolean().optional(),
-  claudeUserMcp: z.boolean().optional(), // Claude bots also load this machine's Claude Code MCP servers. Off unless true: tools cost tokens.
-  claudeUserSkills: z.boolean().optional(), // Claude bots also load the skills in ~/.claude/skills, in place. Off unless true.
-  /** LLM-generated titles for new threads. Off unless true. */
-  llmThreadTitles: z.boolean().optional(),
-  /** A new bot's setup card offers answers its engine writes for it, when there is something to go on. On unless false. */
-  smartSetupChoices: z.boolean().optional(),
-  /** Recall matching passages from the bot's memory into each turn. On unless false. */
-  autoRecall: z.boolean().optional(),
-  /** One shared skills store that bots read by assignment. Off unless true. */
-  skillsLibrary: z.boolean().optional(),
-  shareLearnedSkills: z.enum(["off", "ask", "auto"]).optional(),
-  /** Memory upkeep also reads a member bot's room turns. Off unless true. */
-  roomMemoryCapture: z.boolean().optional(),
-  /** Room jobs to several members run side by side, each in a thread of its own. Off unless true. */
-  parallelRoomJobs: z.boolean().optional(),
-  acpPlanLines: z.boolean().optional(), // An ACP agent's plan as activity lines. Off unless true.
-}).extend({ agentsToolBridge: z.boolean().optional(), savedSteps: z.boolean().optional(), usbPhoneTakeover: z.boolean().optional(), cloudComputerAutoReplace: z.boolean().optional() }); // cloudComputerAutoReplace: delete and replace a dead cloud computer by itself, off unless true (OMB_CLOUD_COMPUTER_AUTO_REPLACE wins); agentsToolBridge: the find_tool / use_tool bridge, off unless true; savedSteps: repeat a computer task from its saved steps, on unless false; usbPhoneTakeover: watch and take over the bots' USB phone, off unless true
 const onboardingConfigSchema = z.object({
   completedAt: z.string().trim().max(40).optional(),
   version: z.number().int().min(0).max(1000).optional(),
@@ -483,7 +454,7 @@ export interface AppConfig extends HelperConfig {
   context?: { rebuildBytes?: number; compactAt?: number; autoCompact?: boolean; roomCompactAt?: number; roomSessions?: boolean; replayToolHistory?: boolean };
   memory?: { captureQuietMs?: number; tidyHour?: number };
   localVm?: { mode?: "shared" | "per-bot" | "pool"; maxInstances?: number; idleTimeoutMinutes?: number; preserveInstalledApps?: boolean; memoryGb?: number; cpus?: number };
-  features?: { skillAuthoring?: boolean; skillReview?: boolean; skillReviewSteps?: number; showToolCalls?: boolean; browser?: boolean; sharedComputers?: boolean; claudeUserMcp?: boolean; claudeUserSkills?: boolean; llmThreadTitles?: boolean; smartSetupChoices?: boolean; autoRecall?: boolean; skillsLibrary?: boolean; shareLearnedSkills?: "off" | "ask" | "auto"; roomMemoryCapture?: boolean; parallelRoomJobs?: boolean; acpPlanLines?: boolean; agentsToolBridge?: boolean; savedSteps?: boolean; usbPhoneTakeover?: boolean; cloudComputerAutoReplace?: boolean };
+  features?: FeatureConfig;
   onboarding?: { completedAt?: string; version?: number; reelSeen?: boolean; hintsSeen?: string[]; firstTurnAt?: string };
   browserProfiles?: BrowserProfile[];
   browserEngine?: BrowserEngineConfig;
@@ -612,32 +583,6 @@ export function threadEventLogRetentionDays(cfg: AppConfig): number | null {
   return cfg.threads?.eventLogRetentionDays ?? null;
 }
 
-export function skillAuthoringEnabled(cfg: AppConfig): boolean {
-  return cfg.features?.skillAuthoring !== false;
-}
-
-export const DEFAULT_SKILL_REVIEW_STEPS = 10;
-export const MIN_SKILL_REVIEW_STEPS = 3;
-export const MAX_SKILL_REVIEW_STEPS = 100;
-
-export function skillReviewEnabled(cfg: AppConfig): boolean {
-  return skillAuthoringEnabled(cfg) && cfg.features?.skillReview === true;
-}
-
-export function skillReviewSteps(cfg: AppConfig): number {
-  const raw = cfg.features?.skillReviewSteps;
-  const value = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : DEFAULT_SKILL_REVIEW_STEPS;
-  return Math.min(MAX_SKILL_REVIEW_STEPS, Math.max(MIN_SKILL_REVIEW_STEPS, value));
-}
-
-export function autoRecallEnabled(cfg: AppConfig): boolean {
-  return cfg.features?.autoRecall !== false;
-}
-
-export function roomMemoryCaptureEnabled(cfg: AppConfig): boolean {
-  return cfg.features?.roomMemoryCapture === true;
-}
-
 export const DEFAULT_CAPTURE_QUIET_MS = 2 * 60_000;
 export const DEFAULT_TIDY_HOUR = 3;
 
@@ -648,24 +593,6 @@ export function captureQuietMs(cfg: AppConfig): number {
 export function tidyHour(cfg: AppConfig): number {
   return cfg.memory?.tidyHour ?? DEFAULT_TIDY_HOUR;
 }
-
-export function showToolCallsEnabled(cfg: AppConfig): boolean {
-  return cfg.features?.showToolCalls === true;
-}
-
-export function builtInBrowserEnabled(cfg: AppConfig, _env: NodeJS.ProcessEnv = process.env): boolean {
-  return cfg.features?.browser !== false;
-}
-
-/** Security: every paired session may lend its computer only when true, because a read-only folder grant can still be escalated to a shell. */
-export function sharedComputersEnabled(cfg: AppConfig): boolean { return cfg.features?.sharedComputers === true; }
-/** A self-hosted server's own admin pairings may lend their computer unless this is false (each desktop asks its person first). */
-export function ownerLendingEnabled(cfg: AppConfig): boolean { return cfg.features?.sharedComputers !== false; }
-
-export function claudeUserMcpEnabled(cfg: Pick<AppConfig, "features">): boolean {
-  return cfg.features?.claudeUserMcp === true;
-}
-
 
 export function engineLaunches(configs: InstanceConfigMap, env: Record<string, string | undefined> = process.env): Record<string, unknown> {
   return Object.fromEntries(Object.entries(configs).map(([id, entry]) =>

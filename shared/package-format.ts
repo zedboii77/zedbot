@@ -91,8 +91,8 @@ const portableSkillSchema = z.object({
   compatibility: optionalText(200),
   instructions: skillInstructions,
 });
-const soulSchema = z.string().refine((value) => utf8Bytes(value) <= BOT_PROFILE_LIMITS.soul, {
-  error: "standing instructions must be at most 24000 bytes",
+const soulSchema = z.string().max(BOT_PROFILE_LIMITS.soul, {
+  error: `standing instructions must be at most ${BOT_PROFILE_LIMITS.soul} characters`,
 });
 const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const intervalWeekdays = z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(

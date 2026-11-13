@@ -16,6 +16,7 @@ import {
   streamedReply,
   withLiveRows,
 } from "./live-reply";
+import { getReasoningOverride, resetReasoningOverrides, setReasoningOverride } from "@/lib/reasoning-collapse";
 import type { Message } from "@/state/store";
 
 let seq = 0;
@@ -33,7 +34,7 @@ const complete = (text: string, threadId = "t") =>
 const shown = (threadId = "t", transcript: { id: string }[] = []) =>
   liveReplyRows(liveReplies(threadId), transcript).rows.map((row) => row.text);
 
-afterEach(() => resetLiveReplies());
+afterEach(() => { resetLiveReplies(); resetReasoningOverrides(); });
 
 // Frames with no item id are what a server older than item ids sends (a Cloud not yet updated).
 describe("a reply as it streams from an older server", () => {
@@ -48,6 +49,79 @@ describe("a reply as it streams from an older server", () => {
     expect(liveReplies("t")[0]!.text).toBe("Here is the plan for today.");
     expect(shown(), "the unfinished last word waits").toEqual(["Here is the plan for "]);
   });
+
+describe("streamed reasoning", () => {
+  const think = (deltaText: string, threadId = "t", extra: Partial<RuntimeEvent> = {}) =>
+    note({ type: "content.delta", streamKind: "reasoning_text", delta: deltaText, ...extra } as Partial<RuntimeEvent>, threadId);
+
+  it("keeps reasoning with its item and draws it only when enabled", () => {
+    note({ type: "turn.started" });
+    think("thinking ");
+    think("hard");
+    delta("Here is the plan.");
+    expect(liveReplies("t")).toHaveLength(1);
+    expect(liveReplies("t")[0]!.text).toBe("Here is the plan.");
+    expect(liveReplies("t")[0]!.reasoning).toBe("thinking hard");
+    expect(liveReplyRows(liveReplies("t"), []).rows[0]).not.toHaveProperty("reasoning");
+    expect(liveReplyRows(liveReplies("t"), [], undefined, true).rows[0]!.reasoning).toBe("thinking hard");
+  });
+
+  it("keeps a reasoning-only item off the transcript until reasoning is on", () => {
+    note({ type: "turn.started" });
+    think("still thinking ");
+    expect(liveReplyRows(liveReplies("t"), []).rows).toEqual([]);
+    expect(hasLiveReply("t")).toBe(false);
+    expect(hasLiveReply("t", true)).toBe(true);
+    const rows = liveReplyRows(liveReplies("t"), [], undefined, true).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.reasoning).toBe("still thinking ");
+    expect(rows[0]!.text).toBe("");
+  });
+
+  it("joins thinking across tool calls with a paragraph break and preserves separate message reasoning", () => {
+    note({ type: "turn.started" });
+    think("THINK11A ");
+    delta("T11M1 ", "t", { itemId: "m1" } as Partial<RuntimeEvent>);
+    note({ type: "item.completed", itemType: "assistant_text", text: "T11M1", itemId: "m1" } as Partial<RuntimeEvent>);
+    noteLiveReplyMessage("t", { id: "saved-1", role: "bot", kind: "text", turnId: "turn-1", itemId: "m1" });
+
+    think("THINK11B");
+    note({ type: "item.started", itemType: "tool", itemId: "c1", title: "ls" } as Partial<RuntimeEvent>);
+    note({ type: "item.completed", itemType: "tool", itemId: "c1", ok: true } as Partial<RuntimeEvent>);
+    think("more thought");
+    delta("T11M2 ", "t", { itemId: "m2" } as Partial<RuntimeEvent>);
+    const rows = liveReplyRows(liveReplies("t"), [{ id: "saved-1", itemId: "m1" }], undefined, true).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.reasoning).toBe("THINK11B\n\nmore thought");
+    expect(rows[0]!.text).toBe("T11M2 ");
+  });
+
+  it("pairs reasoning emitted under its own reasoning itemId with the reply itemId that follows", () => {
+    note({ type: "turn.started" });
+    think("internal check ", "t", { itemId: "r1" } as Partial<RuntimeEvent>);
+    delta("Visible answer.", "t", { itemId: "m1" } as Partial<RuntimeEvent>);
+    note({ type: "item.completed", itemType: "assistant_text", text: "Visible answer.", itemId: "m1" } as Partial<RuntimeEvent>);
+    const rows = liveReplyRows(liveReplies("t"), [], undefined, true).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.reasoning).toBe("internal check ");
+    expect(rows[0]!.text).toBe("Visible answer.");
+  });
+
+  it("masks secrets in streaming reasoning and transfers manual collapse choice when saved", () => {
+    note({ type: "turn.started" });
+    think("key is sk-ant-api03-");
+    expect(liveReplyRows(liveReplies("t"), [], undefined, true).rows[0]!.reasoning).toBe("key is ");
+    think("abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ ");
+    const liveRow = liveReplyRows(liveReplies("t"), [], undefined, true).rows[0]!;
+    expect(liveRow.reasoning).not.toContain("abcdefghijklmnopqrstuvwxyz");
+
+    setReasoningOverride(liveRow.id, true);
+    delta("Answer", "t", { itemId: "m1" } as Partial<RuntimeEvent>);
+    note({ type: "item.completed", itemType: "assistant_text", text: "Answer", itemId: "m1" } as Partial<RuntimeEvent>);
+    noteLiveReplyMessage("t", { id: "msg-saved", role: "bot", kind: "text", turnId: "turn-1", itemId: "m1" });
+    expect(getReasoningOverride("msg-saved")).toBe(true);
+  });
+});
 
   it("keeps each thread's reply its own", () => {
     delta("one ", "a");

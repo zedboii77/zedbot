@@ -127,7 +127,7 @@ rooms:
     ["a responder from outside the room", "bots: [{ name: A }]\nrooms: [{ name: R, members: [A], responder: B }]", "responder must be everyone, mentions, or one of its members"],
     ["a title on two lines", 'bots: [{ name: A, title: "Buyer\\nand critic" }]', "bots[0].title: a title must fit on one line"],
     ["a name too long", `bots: [{ name: ${"n".repeat(BOT_PROFILE_LIMITS.name + 1)} }]`, `bots[0].name: must be at most ${BOT_PROFILE_LIMITS.name} characters`],
-    ["a soul too long", `bots: [{ name: A, soul: ${"s".repeat(BOT_PROFILE_LIMITS.soul + 1)} }]`, `soul is over ${BOT_PROFILE_LIMITS.soul} bytes`],
+    ["a soul too long", `bots: [{ name: A, soul: ${"s".repeat(BOT_PROFILE_LIMITS.soul + 1)} }]`, `soul is over ${BOT_PROFILE_LIMITS.soul} characters`],
     ["a team brief too long", `teams: [{ name: T, brief: ${"b".repeat(TEAM_BRIEF_MAX_BYTES + 1)} }]\nbots: [{ name: A }]`, `brief is over ${TEAM_BRIEF_MAX_BYTES} bytes`],
     ["a room brief too long", `bots: [{ name: A }]\nrooms: [{ name: R, members: [A], brief: ${"b".repeat(ROOM_BRIEF_MAX_CHARS + 1)} }]`, `brief is over ${ROOM_BRIEF_MAX_CHARS} characters`],
     ["a skill too big", "bots: [{ name: A, skills: [{ file: skills/huge/SKILL.md }] }]", "skills/huge/SKILL.md is over 256 KiB"],

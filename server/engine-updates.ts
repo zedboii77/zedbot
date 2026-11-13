@@ -364,3 +364,21 @@ export function createEngineUpdater(options: EngineUpdaterOptions): EngineUpdate
     },
   };
 }
+
+export function createEngineUpdateToggle(updates: { start(): DueTimer }) {
+  let timer: DueTimer | null = null;
+  return {
+    sync(enabled: boolean) {
+      if (enabled) {
+        timer ??= updates.start();
+      } else {
+        timer?.stop();
+        timer = null;
+      }
+    },
+    stop() {
+      timer?.stop();
+      timer = null;
+    },
+  };
+}

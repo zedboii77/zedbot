@@ -8,8 +8,8 @@ import { AboutDialog } from "../../AboutDialog";
 import { AnalyticsRow } from "../../AnalyticsRow";
 import { ChatWidthRow, FontRow, SidebarToolsLayoutRow } from "../../AppearanceSelectRows";
 import {
-  ColorUserBubblesRow, FollowUpRow, LanguageRow, PinnedCirclesRow, ReplayTourRow, RunCardRow, SendKeyRow, ShowThreadsRow,
-  ToolCallsRow, UniversalPinsRow, UpdatesRow,
+  ColorUserBubblesRow, ConversationStyleRow, FollowUpRow, LanguageRow, PinnedCirclesRow, ReplayTourRow, RunCardRow, SendKeyRow, ShowThreadsRow,
+  ThinkingBlocksRow, ThinkingCollapseRow, ToolCallsRow, UniversalPinsRow, UpdatesRow,
 } from "../../AppSettingsRows";
 import { ChromeRailRow } from "../../ChromeRailToggle";
 import { ConnectedWorkspacesSettings } from "../../ConnectedWorkspacesSettings";
@@ -165,7 +165,10 @@ export function AppearancePage() {
     </SettingsGroup>
     <SettingsGroup label={t("settings.appearance.chat")} block="chat">
       <SettingsRows>
+        {!ctx.client && <ConversationStyleRow />}
         {!ctx.client && <ToolCallsRow />}
+        {!ctx.client && <ThinkingBlocksRow />}
+        {!ctx.client && <ThinkingCollapseRow />}
         {ctx.advanced && <RunCardRow />}
         {ctx.advanced && <ChatWidthRow />}
         {ctx.advanced && <FontRow />}

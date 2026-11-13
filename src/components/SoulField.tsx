@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { BOT_PROFILE_LIMITS } from "../../shared/bot-profile";
 import { cn } from "@/lib/cn";
-import { firstSentence, soulPatchFor, utf8Bytes } from "@/lib/soul";
+import { firstSentence, soulPatchFor } from "@/lib/soul";
 import { useStore, type Bot } from "@/state/store";
 import { useBotEditor } from "./bot-settings/BotEditorContext";
 import { inputCls } from "./bot-settings/field";
@@ -39,8 +39,8 @@ export function SoulField({
   };
   useEffect(() => { void refresh(); }, [bot.id, bot.soulDrift, flushBotPatches]);
 
-  const bytes = utf8Bytes(draft);
-  const over = bytes > limit;
+  const chars = draft.length;
+  const over = chars > limit;
   const change = (value: string) => {
     setDraft(value);
     const patch = soulPatchFor(value, limit);
@@ -116,7 +116,7 @@ export function SoulField({
           {!simple && <>{t("botIdentity.soul.contextHelp")}{info?.file ? <> {t("botIdentity.soul.mirroredTo")} <span className="break-all">{info.file}</span>.</> : null}</>}
         </span>
         <span className={cn("shrink-0 tabular-nums", over && "font-medium text-red-500")}>
-          {t(over ? "botIdentity.soul.bytesOver" : "botIdentity.soul.bytes", { bytes: bytes.toLocaleString(intlLocale()), limit: limit.toLocaleString(intlLocale()) })}
+          {t(over ? "botIdentity.soul.bytesOver" : "botIdentity.soul.bytes", { bytes: chars.toLocaleString(intlLocale()), limit: limit.toLocaleString(intlLocale()) })}
         </span>
       </div>}
     </div>

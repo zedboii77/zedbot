@@ -1,36 +1,37 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { formattedReplyWidth, isFormattedReply, splitReplyBlocks } from "@/lib/formatted-reply";
+import { formattedReplyWidth, isFormattedReply, openChamberReplyWidth, splitReplyBlocks } from "@/lib/formatted-reply";
+import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { activeLocale, intlLocale, t } from "@/lib/i18n";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { useReactor } from "@/lib/cloud-guest";
 import { otherSpeaker } from "@/lib/own-profile";
-import { Check, ChevronDown, FolderOpen, Loader2, Pin, Square, X } from "lucide-react";
+import { Pin, Square, X } from "lucide-react";
 import {
-  api,
   useStore,
   formatTime,
   openRoomThread,
   openThread,
   type Bot,
   type Group,
-  type GroupDefaultResponder,
   type Message,
 } from "@/state/store";
 import { BotAvatar } from "./Avatar";
+import { OpenChamberMessageRow } from "./OpenChamberMessageRow";
+import { RoomSetup } from "./RoomSetup";
 import { ScreenFrame } from "./ScreenFrame";
 import { RoomHoldsBanner } from "./RoomHoldsBanner";
 import { ThreadChip } from "./ThreadChip";
 import { ToolActivity } from "./ToolActivity";
 import { ThreadRefText } from "./ThreadRefs";
 import { TurnPresence } from "./TurnPresence";
-import { showToolCallsEnabled } from "@/lib/feature-flags";
+import { conversationStyleMode, isOpenChamberConversation, reasoningCollapseMode, showToolCallsEnabled, showReasoningEnabled } from "@/lib/feature-flags";
 import { CompactionChip, DigestChip } from "./DigestChip";
 import { roomActivityVisible } from "@/lib/room-activity";
 import { StatusActivityRow } from "@/components/StatusActivityRow"; import { BugReportNote } from "@/components/BugReportNote";
-import { normalizeState } from "@/lib/mascot";
 import { botTextShowsSpeaker, laterTextOwns, runShowsSpeaker } from "@/lib/room-speaker"; import { roomAddressees } from "@/lib/room-addressees";
 import { defaultResponderName, groupResponseHint, jevRoomRoutingOn } from "@/lib/group-routing";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { ReasoningBlock } from "./ReasoningBlock";
 import { FailedTurnRow, MessageBoundary } from "./ChatView";
 import { SIMPLE_BOT_BUBBLE, SIMPLE_BUBBLE_MAX, SIMPLE_BUBBLE_TEXT, SIMPLE_USER_BUBBLE } from "./chat-bubble";
 import { ReplyBlocks } from "./ReplyBlocks";
@@ -71,7 +72,6 @@ import { groupActivityRuns, isStatusActivity, roomTurnFolds } from "@/lib/activi
 import { TurnNarrationRun } from "./TurnNarrationRun";
 import { ActivityRun } from "./ActivityRun";
 import { cn } from "@/lib/cn";
-import { useMenuMotion } from "./MenuMotion";
 import { useLiveToolIds } from "@/hooks/use-live-tool-ids";
 import { roomNeedsSetup } from "@/lib/room-setup";
 import { useComposerDockPad } from "@/lib/composer-dock";
@@ -139,6 +139,7 @@ function RoomTextMessage({
   transcript,
   emerging,
   eager,
+  openChamber = false,
   onReply,
   canReact,
 }: {
@@ -148,11 +149,14 @@ function RoomTextMessage({
   transcript: Message[];
   emerging: boolean;
   eager: boolean;
+  openChamber?: boolean;
   onReply: (message: Message) => void;
   canReact: boolean;
 }) {
   const { state, dispatch } = useStore();
   const user = m.role === "user";
+  const showReasoning = showReasoningEnabled(state.config);
+  const reasoningCollapse = reasoningCollapseMode(state.config);
   const reactor = useReactor();
   const speaker = otherSpeaker(m, state.config?.team && reactor !== "user" ? reactor : null);
   const rawText = user ? (m.text ?? "") : stripLeakedSystemHarnessMessages(m.text ?? "");
@@ -184,10 +188,16 @@ function RoomTextMessage({
     pin,
   });
   const replyGroup = useMemo(() => !user && !isLiveReply(m) && botText.trim() ? replyAttachmentGroup(botText, m.attachments) : null, [user, m, botText]);
-  const blocks = useMemo(() => simple && !user && !viewRaw && botText.trim() ? splitReplyBlocks(botText) : null, [simple, user, viewRaw, botText]);
+  const blocks = useMemo(() => simple && !openChamber && !user && !viewRaw && botText.trim() ? splitReplyBlocks(botText) : null, [simple, openChamber, user, viewRaw, botText]);
   const tabled = Boolean(blocks?.some((block) => block.kind === "table"));
   const botActions = !user && (
-    <MessageActions side="bot" forceOpen={viewRaw || speaking} menu={botMenu}>
+    <MessageActions
+      side="bot"
+      forceOpen={viewRaw || speaking}
+      touchVisible={openChamber}
+      className={openChamber ? "self-auto pb-0" : undefined}
+      menu={botMenu}
+    >
       <ReplyAction onReply={() => onReply(m)} />
       {canReact && m.from && <ReactAction threadId={group.threadId} message={m} />}
       {botText && <CopyButton text={botText} className={messageActionClass} />}
@@ -195,108 +205,137 @@ function RoomTextMessage({
       {botText && speaking && <SpeakButton text={botText} botId={speakerBot?.id} messageId={m.id} voiceId={speakerBot?.voice} tts={state.config?.tts} localVoice={localSystemVoiceActive()} className={cn(messageActionClass, "text-accent")} />}
     </MessageActions>
   );
+  const userActions = user && (
+    <MessageActions
+      side="user"
+      touchVisible={openChamber}
+      className={openChamber ? "self-auto pb-0" : undefined}
+      menu={userMessageMenu({ messageId: m.id, pin })}
+    >
+      <ReplyAction onReply={() => onReply(m)} />
+      {Boolean(display.trim()) && <CopyButton text={display} className={messageActionClass} />}
+    </MessageActions>
+  );
+  const bubbleElement = (
+    <div
+      data-chat-bubble={openChamber ? "openchamber" : simple ? "simple" : ""}
+      className={cn(
+        openChamber
+          ? user
+            ? "chat-text w-fit max-w-[min(85%,var(--chat-bubble-max))] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[18px] rounded-ee-[6px] bg-bubble-user px-4 py-2.5 text-[15px] leading-[1.55] text-ink"
+            : cn("min-w-0 text-[15px] leading-[1.65] text-ink", openChamberReplyWidth(viewRaw ? "" : botText), emerging && !streamedReply(m.id) && "turn-answer")
+          : cn(
+              tabled ? "w-full" : "w-fit",
+              simple ? cn(!tabled && SIMPLE_BUBBLE_MAX, SIMPLE_BUBBLE_TEXT) : "max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct))] rounded-2xl text-[15px] leading-relaxed",
+              !user && emerging && !streamedReply(m.id) && "turn-answer",
+              tabled || (!user && !m.text?.trim() && !m.replyToId && m.attachments?.length)
+                ? "text-ink"
+                : !simple && !user && isFormattedReply(m.text ?? "")
+                  ? cn(formattedReplyWidth(m.text ?? ""), "px-1 text-ink")
+                  : user
+                    ? cn("chat-text whitespace-pre-wrap [overflow-wrap:anywhere] text-ink", simple ? SIMPLE_USER_BUBBLE : "bg-bubble-user px-4 py-2.5")
+                    : simple ? SIMPLE_BOT_BUBBLE : "bg-card px-4 py-2.5 text-ink",
+            ),
+      )}
+      title={new Date(m.at).toLocaleString(intlLocale())}
+    >
+      {m.replyToId && (() => {
+        const target = transcript.find((candidate) => candidate.id === m.replyToId);
+        return target ? (
+          <div className="mb-2">
+            <ReplyQuote
+              message={target}
+              fallbackName={t("room.fallbackBot")}
+              compact
+              onJump={() =>
+                dispatch({ type: "focusMessage", threadId: group.threadId, messageId: target.id })
+              }
+            />
+          </div>
+        ) : null;
+      })()}
+      {user ? (
+        <>
+          {attachments && <AttachmentGallery images={attachments.images} files={attachments.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} className={!attachments.display ? "mb-0" : undefined} />}
+          <div
+            className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}
+            data-citation-source={m.id}
+            data-citation-owner-type="group"
+            data-citation-owner={group.id}
+            data-citation-thread={group.threadId}
+          >
+            <ThreadRefText text={display} peers={peers} everyone={!group.dm} />
+          </div>{m.bugReport && <BugReportNote report={m.bugReport} />}
+          {cited && <SentCitations
+            citations={cited.citations}
+            onNavigate={async (citation: CitationAttachment) => {
+              if (citation.source.ownerType !== "group" || !group.messages.some((candidate) => candidate.id === citation.source.messageId)) return false;
+              dispatch({ type: "focusMessage", threadId: group.threadId, messageId: citation.source.messageId });
+              return highlightCitationSource(citation);
+            }}
+          />}
+          {m.via === "api" && (
+            <div className="mt-1 text-[11px] text-ink-secondary">{t("room.viaApi")}</div>
+          )}
+          {collapsible && (
+            <button type="button" onClick={() => setExpanded(true)} className="mt-1 text-[13px] text-ink-secondary hover:text-ink">
+              {t("chat.showFull")}
+            </button>
+          )}
+          {expanded && (
+            <button type="button" onClick={() => setExpanded(false)} className="mt-1 text-[13px] text-ink-secondary hover:text-ink">
+              {t("chat.showLess")}
+            </button>
+          )}
+        </>
+      ) : (
+        <MessageBoundary key={viewRaw ? "raw" : "rendered"} fallbackText={botText || t("chat.generatedImage")}>
+          {(m.attachments ?? []).some((attachment) => attachment.kind === "audio") && (
+            <div className={cn("flex flex-col", (m.text || (m.attachments ?? []).some((attachment) => attachment.kind === "image")) && "mb-2")}>
+              {m.attachments!.filter((attachment): attachment is VoiceNoteAttachment => attachment.kind === "audio").map((note) => (
+                <VoiceNoteBubble key={note.path} attachment={note} />
+              ))}
+            </div>
+          )}
+          {!botText.trim() && <MessageAttachmentGallery text={botText} attachments={m.attachments} message={{ threadId: group.threadId, messageId: m.id }} className={m.text ? undefined : "mb-0"} eager={eager} />}
+          {m.reasoning && showReasoning && (
+            <ReasoningBlock
+              messageId={m.id}
+              text={m.reasoning}
+              thinking={isLiveReply(m) && !botText.trim()}
+              collapseMode={reasoningCollapse}
+            />
+          )}
+          {viewRaw && botText ? (
+            <div data-citation-source={m.id} data-citation-owner-type="group" data-citation-owner={group.id} data-citation-thread={group.threadId}><RawMarkdownView text={botText} /></div>
+          ) : tabled && blocks ? (
+            <ReplyBlocks blocks={blocks} tray={botActions} citation={{ messageId: m.id, ownerType: "group", ownerId: group.id, threadId: group.threadId }}
+              render={(block) => <ChatMarkdown text={block} mentionPeers={peers} everyone={!group.dm} mentionPerson={{ profileName: state.config?.profile?.name }} message={{ threadId: group.threadId, messageId: m.id }} delivered={replyGroup?.delivered} originals={replyGroup?.originals} />} />
+          ) : botText ? (
+            <div data-citation-source={m.id} data-citation-owner-type="group" data-citation-owner={group.id} data-citation-thread={group.threadId}><ChatMarkdown text={botText} mentionPeers={peers} everyone={!group.dm} mentionPerson={{ profileName: state.config?.profile?.name }} message={{ threadId: group.threadId, messageId: m.id }} delivered={replyGroup?.delivered} originals={replyGroup?.originals} /></div>
+          ) : null}
+          {replyGroup && <AttachmentGallery images={replyGroup.images} files={replyGroup.files} originals={replyGroup.originals} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} beneath />}
+        </MessageBoundary>
+      )}
+    </div>
+  );
   return (
     <div {...{ [MESSAGE_ROW]: "" }} className={cn("group flex w-full flex-col", user ? "items-end" : "items-start")}>
       {speaker && <div className="mb-0.5 px-1 text-[12px] font-medium text-ink-secondary">{speaker}</div>}
-      <div className={cn("flex w-full items-end gap-1.5", user ? "justify-end" : "justify-start")}>
-        {user && (
-          <MessageActions side="user" menu={userMessageMenu({ messageId: m.id, pin })}>
-            <ReplyAction onReply={() => onReply(m)} />
-            {Boolean(display.trim()) && <CopyButton text={display} className={messageActionClass} />}
-          </MessageActions>
-        )}
-        <div
-          data-chat-bubble={simple ? "simple" : ""}
-          className={cn(
-            tabled ? "w-full" : "w-fit",
-            simple ? cn(!tabled && SIMPLE_BUBBLE_MAX, SIMPLE_BUBBLE_TEXT) : "max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct))] rounded-2xl text-[15px] leading-relaxed",
-            !user && emerging && !streamedReply(m.id) && "turn-answer",
-            tabled || (!user && !m.text?.trim() && !m.replyToId && m.attachments?.length)
-              ? "text-ink"
-              : !simple && !user && isFormattedReply(m.text ?? "")
-                ? cn(formattedReplyWidth(m.text ?? ""), "px-1 text-ink")
-                : user
-                  ? cn("chat-text whitespace-pre-wrap [overflow-wrap:anywhere] text-ink", simple ? SIMPLE_USER_BUBBLE : "bg-bubble-user px-4 py-2.5")
-                  : simple ? SIMPLE_BOT_BUBBLE : "bg-card px-4 py-2.5 text-ink",
-          )}
-          title={new Date(m.at).toLocaleString(intlLocale())}
-        >
-          {m.replyToId && (() => {
-            const target = transcript.find((candidate) => candidate.id === m.replyToId);
-            return target ? (
-              <div className="mb-2">
-                <ReplyQuote
-                  message={target}
-                  fallbackName={t("room.fallbackBot")}
-                  compact
-                  onJump={() =>
-                    dispatch({ type: "focusMessage", threadId: group.threadId, messageId: target.id })
-                  }
-                />
-              </div>
-            ) : null;
-          })()}
-          {user ? (
-            <>
-              {attachments && <AttachmentGallery images={attachments.images} files={attachments.files} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} className={!attachments.display ? "mb-0" : undefined} />}
-              <div
-                className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}
-                data-citation-source={m.id}
-                data-citation-owner-type="group"
-                data-citation-owner={group.id}
-                data-citation-thread={group.threadId}
-              >
-                <ThreadRefText text={display} peers={peers} everyone={!group.dm} />
-              </div>{m.bugReport && <BugReportNote report={m.bugReport} />}
-              {cited && <SentCitations
-                citations={cited.citations}
-                onNavigate={async (citation: CitationAttachment) => {
-                  if (citation.source.ownerType !== "group" || !group.messages.some((candidate) => candidate.id === citation.source.messageId)) return false;
-                  dispatch({ type: "focusMessage", threadId: group.threadId, messageId: citation.source.messageId });
-                  return highlightCitationSource(citation);
-                }}
-              />}
-              {m.via === "api" && (
-                <div className="mt-1 text-[11px] text-ink-secondary">{t("room.viaApi")}</div>
-              )}
-              {collapsible && (
-                <button type="button" onClick={() => setExpanded(true)} className="mt-1 text-[13px] text-ink-secondary hover:text-ink">
-                  {t("chat.showFull")}
-                </button>
-              )}
-              {expanded && (
-                <button type="button" onClick={() => setExpanded(false)} className="mt-1 text-[13px] text-ink-secondary hover:text-ink">
-                  {t("chat.showLess")}
-                </button>
-              )}
-            </>
-          ) : (
-            <MessageBoundary key={viewRaw ? "raw" : "rendered"} fallbackText={botText || t("chat.generatedImage")}>
-              {(m.attachments ?? []).some((attachment) => attachment.kind === "audio") && (
-                <div className={cn("flex flex-col", (m.text || (m.attachments ?? []).some((attachment) => attachment.kind === "image")) && "mb-2")}>
-                  {m.attachments!.filter((attachment): attachment is VoiceNoteAttachment => attachment.kind === "audio").map((note) => (
-                    <VoiceNoteBubble key={note.path} attachment={note} />
-                  ))}
-                </div>
-              )}
-              {!botText.trim() && <MessageAttachmentGallery text={botText} attachments={m.attachments} message={{ threadId: group.threadId, messageId: m.id }} className={m.text ? undefined : "mb-0"} eager={eager} />}
-              {viewRaw && botText ? (
-                <div data-citation-source={m.id} data-citation-owner-type="group" data-citation-owner={group.id} data-citation-thread={group.threadId}><RawMarkdownView text={botText} /></div>
-              ) : tabled && blocks ? (
-                <ReplyBlocks blocks={blocks} tray={botActions} citation={{ messageId: m.id, ownerType: "group", ownerId: group.id, threadId: group.threadId }}
-                  render={(block) => <ChatMarkdown text={block} mentionPeers={peers} everyone={!group.dm} mentionPerson={{ profileName: state.config?.profile?.name }} message={{ threadId: group.threadId, messageId: m.id }} delivered={replyGroup?.delivered} originals={replyGroup?.originals} />} />
-              ) : botText ? (
-                <div data-citation-source={m.id} data-citation-owner-type="group" data-citation-owner={group.id} data-citation-thread={group.threadId}><ChatMarkdown text={botText} mentionPeers={peers} everyone={!group.dm} mentionPerson={{ profileName: state.config?.profile?.name }} message={{ threadId: group.threadId, messageId: m.id }} delivered={replyGroup?.delivered} originals={replyGroup?.originals} /></div>
-              ) : null}
-              {replyGroup && <AttachmentGallery images={replyGroup.images} files={replyGroup.files} originals={replyGroup.originals} message={{ threadId: group.threadId, messageId: m.id }} eager={eager} beneath />}
-            </MessageBoundary>
-          )}
+      {openChamber ? (
+        <OpenChamberMessageRow user={user} at={m.at} actions={user ? userActions : botActions}>
+          {bubbleElement}
+        </OpenChamberMessageRow>
+      ) : (
+        <div className={cn("flex w-full items-end gap-1.5", user ? "justify-end" : "justify-start")}>
+          {userActions}
+          {bubbleElement}
+          {!tabled && botActions}
+          <span className="self-end pb-1 text-[11px] tabular-nums text-ink-tertiary opacity-0 transition-opacity group-hover:opacity-100">
+            {formatTime(m.at)}
+          </span>
         </div>
-        {!tabled && botActions}
-        <span className="self-end pb-1 text-[11px] tabular-nums text-ink-tertiary opacity-0 transition-opacity group-hover:opacity-100">
-          {formatTime(m.at)}
-        </span>
-      </div>
+      )}
       <ReactionChips threadId={group.threadId} message={m} bots={members} align={user ? "end" : "start"} canReact={canReact} />
       {!user && m.routedBy && <RoutedByLine routedBy={m.routedBy} />}
     </div>
@@ -326,9 +365,12 @@ export const Transcript = memo(function Transcript({
 }) {
   const { state, dispatch } = useStore();
   const showThreads = useShowThreads();
+  const phone = useMediaQuery(PHONE_LAYOUT);
+  const openChamber = isOpenChamberConversation(conversationStyleMode(state.config), phone);
   const showToolCalls = showToolCallsEnabled(state.config);
+  const showReasoning = showReasoningEnabled(state.config);
   const canReact = useCanReact(group.threadId); const teammatePeers = useTeammates().peers;
-  const memberOf = (id?: string) => members.find((b) => b.id === id); const messages = useLiveTranscript(group.threadId, saved, transcript, members, roomThreadSpeakerId(group, group.threadId));
+  const memberOf = (id?: string) => members.find((b) => b.id === id); const messages = useLiveTranscript(group.threadId, saved, transcript, members, roomThreadSpeakerId(group, group.threadId), showReasoning);
   const folds = useMemo(() => roomTurnFolds(messages), [messages, locale]);
   const items = useMemo(() => groupActivityRuns(messages.filter(message =>
     !folds.hiddenIds.has(message.id) &&
@@ -471,6 +513,7 @@ export const Transcript = memo(function Transcript({
                 transcript={transcript}
                 emerging={m.id === emergingId}
                 eager={m.id === newestMessageId || m.id === newestUserMessageId}
+                openChamber={openChamber}
                 onReply={onReply}
                 canReact={canReact}
               />
@@ -506,6 +549,7 @@ export const Transcript = memo(function Transcript({
                       transcript={transcript}
                       emerging={false}
                       eager={false}
+                      openChamber={openChamber}
                       onReply={onReply}
                       canReact={canReact}
                     />
@@ -521,361 +565,6 @@ export const Transcript = memo(function Transcript({
   );
 });
 
-type RoomResponderMode = "lead" | "everyone" | "mentions" | "auto";
-
-function setupResponderMode(responder: GroupDefaultResponder): RoomResponderMode {
-  return responder.kind === "member" ? "lead" : responder.kind;
-}
-
-function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
-  const { state, dispatch } = useStore();
-  const jevOn = jevRoomRoutingOn(state.config);
-  const [folder, setFolder] = useState(group.cwd ?? "");
-  const [behavior, setBehavior] = useState<RoomResponderMode>(setupResponderMode(group.defaultResponder));
-  const [leadId, setLeadId] = useState(
-    group.defaultResponder.kind === "member" ? group.defaultResponder.botId
-      : group.defaultResponder.kind === "auto" && group.defaultResponder.fallbackBotId ? group.defaultResponder.fallbackBotId
-        : members[0]?.id ?? "",
-  );
-  const [instructions, setInstructions] = useState(group.bulletin);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [leadPickerOpen, setLeadPickerOpen] = useState(false);
-  const leadMotion = useMenuMotion(behavior === "lead" && leadPickerOpen);
-  const leadPickerRef = useRef<HTMLDivElement>(null);
-  const selectedLead = members.find((member) => member.id === leadId) ?? members[0];
-
-  useEffect(() => {
-    if (!leadPickerOpen) return;
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!leadPickerRef.current?.contains(event.target as Node)) setLeadPickerOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setLeadPickerOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [leadPickerOpen]);
-
-  const responder = (): GroupDefaultResponder => {
-    if (behavior === "everyone") return { kind: "everyone" };
-    if (behavior === "mentions") return { kind: "mentions" };
-    if (behavior === "auto") return members.some((member) => member.id === leadId) ? { kind: "auto", fallbackBotId: leadId } : { kind: "auto" };
-    return members.some((member) => member.id === leadId)
-      ? { kind: "member", botId: leadId }
-      : group.defaultResponder;
-  };
-
-  const finish = async (action: "complete" | "skip") => {
-    setLeadPickerOpen(false);
-    setSaving(true);
-    setError(null);
-    try {
-      const payload =
-        action === "skip"
-          ? { action }
-          : {
-              action,
-              cwd: folder.trim() || null,
-              defaultResponder: responder(),
-              bulletin: instructions,
-            };
-      const result = await api(`/api/groups/${group.id}/setup`, {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      });
-      const now = Date.now();
-      const nextGroup = {
-        ...(result.group ?? group),
-        id: group.id,
-        setupPending: false,
-        ...(action === "skip" ? { setupSkippedAt: now } : { setupCompletedAt: now }),
-      };
-      dispatch({ type: "groupPatched", group: nextGroup });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const pickFolder = async () => {
-    const chosen = await window.ogb?.pickFolder?.(folder || group.cwd);
-    if (chosen) setFolder(chosen);
-  };
-
-  return (
-    <section
-      data-testid="room-setup"
-      aria-labelledby="room-setup-title"
-      className="relative z-20 w-full overflow-visible rounded-2xl border border-hairline/50 bg-card shadow-xl shadow-black/10"
-    >
-      <div className="rounded-t-3xl border-b border-hairline/40 bg-panel/70 px-5 py-5 sm:px-7">
-        <div className="flex items-start gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-sm font-bold text-white">1</span>
-          <div>
-            <h1 id="room-setup-title" className="text-xl font-semibold tracking-tight text-ink">{t("room.setup.title", { name: group.name })}</h1>
-            <p className="mt-1 max-w-[560px] text-[14px] leading-relaxed text-ink-secondary">
-              {t("room.setup.detail")}
-            </p>
-          </div>
-        </div>
-      </div>
-      <form
-        className="space-y-5 px-5 py-5 sm:px-7 sm:py-6"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void finish("complete");
-        }}
-      >
-        <label className="block">
-          <span className="text-[13px] font-semibold text-ink">{t("room.folder.title")}</span>
-          <span className="mt-1 block text-[12px] text-ink-secondary">{t("room.setup.folderDetail")}</span>
-          <div className="mt-2 flex gap-2">
-            <input
-              value={folder}
-              onChange={(event) => setFolder(event.target.value)}
-              placeholder={t("room.folder.own")}
-              className="min-w-0 flex-1 rounded-xl border border-hairline/50 bg-inset px-3 py-2.5 font-mono text-[13px] text-ink placeholder:text-ink-secondary focus:border-accent focus:outline-none"
-            />
-            {window.ogb?.pickFolder && (
-              <button
-                type="button"
-                onClick={() => void pickFolder()}
-                disabled={saving}
-                className="flex shrink-0 items-center gap-1.5 rounded-xl border border-hairline/50 bg-raised px-3 py-2 text-[13px] font-medium text-ink hover:bg-raised-hover disabled:opacity-50"
-              >
-                <FolderOpen size={14} /> {t("room.folder.chooseShort")}
-              </button>
-            )}
-          </div>
-        </label>
-
-        <fieldset className="block">
-          <legend className="text-[13px] font-semibold text-ink">{t("room.responder.aria")}</legend>
-          <p className="mt-1 text-[12px] text-ink-secondary">{t("room.setup.responderDetail")}</p>
-          <div role="radiogroup" aria-label={t("room.responder.aria")} className="mt-2 grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={behavior === "auto"}
-              onClick={() => {
-                setBehavior("auto");
-                setLeadPickerOpen(false);
-              }}
-              disabled={saving}
-              className={cn(
-                "flex min-h-[72px] w-full cursor-pointer flex-col items-start justify-between rounded-2xl border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50",
-                behavior === "auto"
-                  ? "border-accent bg-accent/10 text-ink ring-1 ring-accent/30"
-                  : "border-hairline/50 bg-inset text-ink-secondary hover:border-hairline hover:bg-raised",
-              )}
-            >
-              <span className="flex items-center gap-2 text-[13px] font-semibold">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                    behavior === "auto" ? "border-accent bg-accent" : "border-ink-secondary/60",
-                  )}
-                >
-                  {behavior === "auto" && <span className="size-1.5 rounded-full bg-white" />}
-                </span>
-                {jevOn ? t("room.responder.autoOption") : t("room.responder.autoOptionOff")}
-              </span>
-              <span className="ml-6 mt-2 text-[12px] text-ink-secondary">
-                {jevOn ? t("room.setup.autoDetail") : t("room.setup.autoDetailOff")}
-              </span>
-            </button>
-
-            <div ref={leadPickerRef} className="relative min-w-0">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={behavior === "lead"}
-                aria-haspopup="listbox"
-                aria-expanded={behavior === "lead" && leadPickerOpen}
-                onClick={() => {
-                  setBehavior("lead");
-                  setLeadPickerOpen((open) => !open);
-                }}
-                disabled={saving}
-                className={cn(
-                  "flex min-h-[72px] w-full flex-col items-start justify-between rounded-2xl border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50",
-                  behavior === "lead"
-                    ? "border-accent bg-accent/10 text-ink ring-1 ring-accent/30"
-                    : "border-hairline/50 bg-inset text-ink-secondary hover:border-hairline hover:bg-raised",
-                )}
-              >
-                <span className="flex w-full items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 text-[13px] font-semibold">
-                    <span
-                      className={cn(
-                        "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                        behavior === "lead" ? "border-accent bg-accent" : "border-ink-secondary/60",
-                      )}
-                    >
-                      {behavior === "lead" && <span className="size-1.5 rounded-full bg-white" />}
-                    </span>
-                    {t("room.behavior.lead")}
-                  </span>
-                  <ChevronDown
-                    size={14}
-                    aria-hidden="true"
-                    className={cn("shrink-0 text-ink-secondary transition-transform", leadPickerOpen && "rotate-180")}
-                  />
-                </span>
-                <span className="ml-6 mt-2 truncate text-[12px] text-ink-secondary">
-                  {selectedLead?.name ?? t("room.behavior.chooseTeammate")}
-                </span>
-              </button>
-              {leadMotion.shown && (
-                <div
-                  role="listbox"
-                  aria-label={t("room.behavior.chooseLead")}
-                  className={cn("absolute left-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-3rem)] overflow-hidden rounded-2xl border border-hairline/60 bg-panel shadow-2xl shadow-black/20", leadMotion.className)} {...leadMotion.exitProps}
-                >
-                  <div className="border-b border-hairline/40 px-3 py-2.5">
-                    <div className="text-[13px] font-semibold text-ink">{t("room.behavior.chooseLead")}</div>
-                    <div className="mt-0.5 text-[12px] text-ink-secondary">{t("room.behavior.chooseLeadDetail")}</div>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto p-1.5">
-                    {members.map((member) => {
-                      const selected = member.id === leadId;
-                      return (
-                        <button
-                          key={member.id}
-                          type="button"
-                          role="option"
-                          aria-selected={selected}
-                          onClick={() => {
-                            setLeadId(member.id);
-                            setLeadPickerOpen(false);
-                          }}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition",
-                            selected ? "bg-accent/10" : "hover:bg-raised",
-                          )}
-                        >
-                          <BotAvatar
-                            bot={member}
-                            state={normalizeState(member.mascotExpression) ?? "happy"}
-                            size={24}
-                            animated={false}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-medium text-ink">{member.name}</span>
-                            <span className="block truncate text-[11px] text-ink-secondary">{member.title}</span>
-                          </span>
-                          {selected && <Check size={15} className="shrink-0 text-accent" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              role="radio"
-              aria-checked={behavior === "everyone"}
-              onClick={() => {
-                setBehavior("everyone");
-                setLeadPickerOpen(false);
-              }}
-              disabled={saving}
-              className={cn(
-                "flex min-h-[72px] w-full flex-col items-start justify-between rounded-2xl border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50",
-                behavior === "everyone"
-                  ? "border-accent bg-accent/10 text-ink ring-1 ring-accent/30"
-                  : "border-hairline/50 bg-inset text-ink-secondary hover:border-hairline hover:bg-raised",
-              )}
-            >
-              <span className="flex items-center gap-2 text-[13px] font-semibold">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                    behavior === "everyone" ? "border-accent bg-accent" : "border-ink-secondary/60",
-                  )}
-                >
-                  {behavior === "everyone" && <span className="size-1.5 rounded-full bg-white" />}
-                </span>
-                {t("room.responder.everyoneOption")}
-              </span>
-              <span className="ml-6 mt-2 text-[12px] text-ink-secondary">{t("room.setup.allMembers")}</span>
-            </button>
-
-            <button
-              type="button"
-              role="radio"
-              aria-checked={behavior === "mentions"}
-              onClick={() => {
-                setBehavior("mentions");
-                setLeadPickerOpen(false);
-              }}
-              disabled={saving}
-              className={cn(
-                "flex min-h-[72px] w-full flex-col items-start justify-between rounded-2xl border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50",
-                behavior === "mentions"
-                  ? "border-accent bg-accent/10 text-ink ring-1 ring-accent/30"
-                  : "border-hairline/50 bg-inset text-ink-secondary hover:border-hairline hover:bg-raised",
-              )}
-            >
-              <span className="flex items-center gap-2 text-[13px] font-semibold">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
-                    behavior === "mentions" ? "border-accent bg-accent" : "border-ink-secondary/60",
-                  )}
-                >
-                  {behavior === "mentions" && <span className="size-1.5 rounded-full bg-white" />}
-                </span>
-                {t("room.responder.mentionsOption")}
-              </span>
-              <span className="ml-6 mt-2 text-[12px] text-ink-secondary">{t("room.setup.onlyMentioned")}</span>
-            </button>
-          </div>
-        </fieldset>
-
-        <label className="block">
-          <span className="text-[13px] font-semibold text-ink">{t("room.setup.instructions")}</span>
-          <span className="mt-1 block text-[12px] text-ink-secondary">{t("room.setup.instructionsDetail")}</span>
-          <textarea
-            value={instructions}
-            onChange={(event) => setInstructions(event.target.value)}
-            rows={5}
-            placeholder={t("room.setup.instructionsPlaceholder")}
-            className="mt-2 w-full resize-y rounded-xl border border-hairline/50 bg-inset px-3 py-2.5 text-[13px] leading-relaxed text-ink placeholder:text-ink-secondary focus:border-accent focus:outline-none"
-          />
-        </label>
-
-        {error && <div role="alert" className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger">{error}</div>}
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="button"
-            onClick={() => void finish("skip")}
-            disabled={saving}
-            className="rounded-xl px-3 py-2 text-left text-[13px] text-ink-secondary hover:bg-raised hover:text-ink disabled:opacity-50"
-          >
-            {t("room.setup.skip")}
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-[13px] font-semibold text-white hover:brightness-110 disabled:opacity-50"
-          >
-            {saving && <Loader2 size={14} className="animate-spin" />}
-            {t("room.setup.save")}
-          </button>
-        </div>
-      </form>
-    </section>
-  );
-}
 export function GroupView({ group }: { group: Group }) {
   const { state, dispatch } = useStore();
   const remoteClient = window.ogb?.remoteClient?.active === true;
@@ -914,6 +603,8 @@ export function GroupView({ group }: { group: Group }) {
   const threadSpeaker = threadSpeakerId ? members.find((b) => b.id === threadSpeakerId) : undefined;
   const setupPending = !remoteClient && roomNeedsSetup(group);
   const advancedMode = useAdvancedMode();
+  const phone = useMediaQuery(PHONE_LAYOUT);
+  const openChamber = isOpenChamberConversation(conversationStyleMode(state.config), phone);
   const simpleHeader = simpleRoomHeader({ advanced: advancedMode, remoteClient, group, setupPending });
 
   const lastGroupMessage = group.messages.at(-1);
@@ -992,6 +683,7 @@ export function GroupView({ group }: { group: Group }) {
     pinOn: [group.busyBotId, group.working, composerDock.pad],
     transcriptShown: !setupPending,
     hasMore: group.hasMore,
+    showReasoning: showReasoningEnabled(state.config),
   });
   const unreadDivider = useUnreadDivider({ threadId: group.threadId, messages: group.messages, following });
 
@@ -1085,7 +777,7 @@ export function GroupView({ group }: { group: Group }) {
 
       <div
         ref={scrollRef}
-        className="glass-scroller h-full overflow-x-hidden overflow-y-auto px-5 [overflow-anchor:none]"
+        className={cn("glass-scroller h-full overflow-x-hidden overflow-y-auto px-5 [overflow-anchor:none]", openChamber && "max-md:px-3.5")}
         {...scrollHandlers}
       >
         {setupPending ? (

@@ -65,9 +65,9 @@ describe("bot folder", () => {
   });
 
   it("bounds external mirror reads to the standing-instructions budget", () => {
-    writeSoulMirror("oversized", "🐭".repeat(6_000));
+    writeSoulMirror("oversized", "é".repeat(60_000));
     expect(readSoulDrift("oversized", "", soulHash(""))).toMatchObject({ drift: true });
-    writeFileSync(soulFile("oversized"), "🐭".repeat(6_001));
+    writeFileSync(soulFile("oversized"), "é".repeat(60_001));
     expect(() => readSoulDrift("oversized", "", soulHash(""))).toThrow("shorten it in your editor");
     expect(checkSoulDrift("oversized", "", soulHash(""))).toEqual({ drift: false });
   });

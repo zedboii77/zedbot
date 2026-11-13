@@ -207,4 +207,27 @@ describe("chat transcript rows", () => {
       window.ogb = bridge;
     }
   });
+
+  it("shows or hides persisted thinking blocks and follows auto vs manual collapse settings", async () => {
+    await rowRendersAfter((current) => reducer(current, {
+      type: "messageAdded",
+      threadId: "pepper-thread",
+      message: message("m99", "m7", { text: "Thought reply", reasoning: "Internal trace" }),
+    }));
+    expect(document.querySelector('[data-testid="reasoning-block"]')).toBeNull();
+
+    await rowRendersAfter((current) => ({
+      ...current,
+      config: { ...current.config, features: { ...current.config?.features, showReasoning: true, reasoningCollapse: "auto" } } as AppState["config"],
+    }));
+    expect(document.querySelector('[data-testid="reasoning-block"]')?.getAttribute("data-reasoning-open")).toBe("false");
+    expect(document.body.textContent).not.toContain("Internal trace");
+
+    await rowRendersAfter((current) => ({
+      ...current,
+      config: { ...current.config, features: { ...current.config?.features, showReasoning: true, reasoningCollapse: "manual" } } as AppState["config"],
+    }));
+    expect(document.querySelector('[data-testid="reasoning-block"]')?.getAttribute("data-reasoning-open")).toBe("true");
+    expect(document.body.textContent).toContain("Internal trace");
+  });
 });

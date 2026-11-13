@@ -719,7 +719,7 @@ const TOOL_DEFINITIONS = [
         name: { type: "string", maxLength: 100, description: "New display name." },
         title: { type: "string", maxLength: 200, description: "New role or title." },
         description: { type: "string", maxLength: 4000, description: "New one-line blurb shown in rosters." },
-        soul: { type: "string", description: "Full replacement text for SOUL.md, at most 24000 bytes." },
+        soul: { type: "string", description: "Full replacement text for SOUL.md, at most 60000 characters." },
         cwd: {
           type: "string",
           maxLength: 1024,

@@ -326,7 +326,7 @@ describe("additive portable team backups", () => {
     if (corruption === "dangling-room") backup.groups[0].memberIds.push("missing");
     if (corruption === "dangling-task") source.activeTask = "missing";
     if (corruption === "duplicate-chief") backup.bots.find((bot) => bot.name === "Scout")!.chiefOfStaff = true;
-    if (corruption === "oversized-soul") source.soul = "🐭".repeat(6_001);
+    if (corruption === "oversized-soul") source.soul = "é".repeat(60_001);
     expect(() => importTeamBackup(store, routines, backup, selection())).toThrow("Invalid backup");
     expect(readFileSync(join(DATA_DIR, "bots.json"), "utf8")).toBe(before);
     expect(readFileSync(join(DATA_DIR, "groups.json"), "utf8")).toBe(groupsBefore);
@@ -337,10 +337,10 @@ describe("additive portable team backups", () => {
     const backup = createTeamBackup(store, routines.listRoutines(), "Legacy team");
     for (const bot of backup.bots) delete bot.soul;
     expect(importTeamBackup(store, routines, backup, selection()).bots.every((bot) => bot.soul === "")).toBe(true);
-    backup.bots[0].soul = "🐭".repeat(6_000);
+    backup.bots[0].soul = "é".repeat(60_000);
     expect(parseTeamBackup(backup).bots[0].soul).toBe(backup.bots[0].soul);
     backup.bots[0].soul += "!";
-    expect(() => parseTeamBackup(backup)).toThrow("24000 bytes");
+    expect(() => parseTeamBackup(backup)).toThrow("60000 characters");
   });
 
   it("strips injected permissions, IDs and live actions from untrusted files", () => {

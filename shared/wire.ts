@@ -458,6 +458,8 @@ export interface WireMessage extends ServerTextLine, HelperIntroField, SetupCard
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "screen" | "connector" | "secret" | "signin" | "routine.run" | "goal.run" | "burst" | "digest" | "compaction" | "call" | "widget" | "app";
   text?: string;
+  /** The model's thinking/reasoning captured for this reply (display-only, never replayed to models). */
+  reasoning?: string;
   digest?: TurnDigest;
   /** kind "compaction" with no `compaction` record: the engine condensed its own session. A marker for people, never context. */
   engineCompaction?: true;
@@ -911,8 +913,7 @@ export interface RoomQueueEntry {
   assignmentId?: string;
 }
 
-/** One member's hold in a room: when the person stopped it, and whether the
- * room has already said so (the held line is written once per hold). */
+/** One member's hold in a room: when the person stopped it, and whether the room has already said so (the held line is written once per hold). */
 export interface RoomHold {
   at: number;
   noted?: boolean;
@@ -924,16 +925,14 @@ export interface RoomHeldMessage {
   messageId: string;
 }
 
-/** Why a steer-queue entry waits: a shared thread slot, or the bot's room
- * turn (which runs one at a time per bot). */
+/** Why a steer-queue entry waits: a shared thread slot, or the bot's room turn (which runs one at a time per bot). */
 export type SteerQueueReason = "capacity" | "group-turn";
 
 /** Pending steer-queue chips, as `queuedSteerSnapshot` emits them and the `bot.queued` frame carries them: threadId → queued items. */
 export type BotQueuedMessages = Record<string, Array<{ queueId: string; text: string; reason?: SteerQueueReason; /** The reason in plain words, shown as it is. */ why?: string;
   /** Team Cloud, where several people write: whose line waits; only they remove it, and it runs after as their own turn. */ sender?: ResolvedSender }>>;
 
-/** Skills library browse surface: one row per library entry, with the bots
- * currently assigned to it. Version is null for locally imported skills. */
+/** Skills library browse surface: one row per library entry, with the bots currently assigned to it. Version is null for locally imported skills. */
 export interface SkillsLibrarySkillWire {
   name: string;
   description: string;
@@ -949,8 +948,7 @@ export interface SkillsLibrarySkillWire {
   assignedBots: Array<{ id: string; name: string }>;
 }
 
-/** PUT body for a bot's assignment list: the full list, applied
- * idempotently. */
+/** PUT body for a bot's assignment list: the full list, applied idempotently. */
 export interface BotAssignedSkillsWire {
   skills: string[];
 }

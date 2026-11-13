@@ -1,7 +1,9 @@
 import { t } from "./i18n";
 
+export type ConversationStyle = "bubbles" | "openchamber" | "mobile";
+
 export interface FeatureFlagConfig {
-  features?: { skillAuthoring?: boolean; skillReview?: boolean; skillReviewSteps?: number; showToolCalls?: boolean; browser?: boolean; sharedComputers?: boolean; claudeUserMcp?: boolean; claudeUserSkills?: boolean; llmThreadTitles?: boolean; skillsLibrary?: boolean; shareLearnedSkills?: "off" | "ask" | "auto"; roomMemoryCapture?: boolean; savedSteps?: boolean; savedStepsHere?: boolean; usbPhoneTakeover?: boolean };
+  features?: { skillAuthoring?: boolean; skillReview?: boolean; skillReviewSteps?: number; showToolCalls?: boolean; showReasoning?: boolean; reasoningCollapse?: "auto" | "manual"; conversationStyle?: ConversationStyle; autoUpdate?: boolean; browser?: boolean; sharedComputers?: boolean; claudeUserMcp?: boolean; claudeUserSkills?: boolean; llmThreadTitles?: boolean; skillsLibrary?: boolean; shareLearnedSkills?: "off" | "ask" | "auto"; roomMemoryCapture?: boolean; savedSteps?: boolean; savedStepsHere?: boolean; usbPhoneTakeover?: boolean };
   browserEngine?: { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; installing?: boolean; installError?: string };
 }
 
@@ -58,6 +60,23 @@ export function builtInBrowserEnabled(config: FeatureFlagConfig | null | undefin
 
 export function showToolCallsEnabled(config: FeatureFlagConfig | null | undefined): boolean {
   return config?.features?.showToolCalls === true;
+}
+
+export function showReasoningEnabled(config: FeatureFlagConfig | null | undefined): boolean {
+  return config?.features?.showReasoning === true;
+}
+
+export function reasoningCollapseMode(config: FeatureFlagConfig | null | undefined): "auto" | "manual" {
+  return config?.features?.reasoningCollapse === "manual" ? "manual" : "auto";
+}
+
+export function conversationStyleMode(config: FeatureFlagConfig | null | undefined): ConversationStyle {
+  const style = config?.features?.conversationStyle;
+  return style === "openchamber" || style === "mobile" ? style : "bubbles";
+}
+
+export function isOpenChamberConversation(style: ConversationStyle, isPhone: boolean): boolean {
+  return style === "openchamber" || (style === "mobile" && isPhone);
 }
 
 export function sharedComputersEnabled(config: FeatureFlagConfig | null | undefined): boolean {

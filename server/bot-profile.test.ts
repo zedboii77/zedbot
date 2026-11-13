@@ -143,12 +143,11 @@ describe("soul (standing instructions)", () => {
     expect(parseBotProfilePatch({ soul: "Be brief." })).toEqual({ ok: true, patch: { soul: "Be brief." } });
   });
 
-  it("caps soul by UTF-8 bytes, not characters", () => {
-    // "é" is two bytes: 12,000 of them is exactly the 24,000-byte budget
-    expect(parseBotProfilePatch({ soul: "é".repeat(12_000) }).ok).toBe(true);
-    expect(parseBotProfilePatch({ soul: "é".repeat(12_001) })).toEqual({
+  it("caps soul by characters up to 60000, including multi-byte characters", () => {
+    expect(parseBotProfilePatch({ soul: "é".repeat(60_000) }).ok).toBe(true);
+    expect(parseBotProfilePatch({ soul: "é".repeat(60_001) })).toEqual({
       ok: false,
-      error: "standing instructions must be at most 24000 bytes",
+      error: "standing instructions must be at most 60000 characters",
     });
   });
 

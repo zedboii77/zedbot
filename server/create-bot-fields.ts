@@ -25,8 +25,8 @@ export function createBotFields(body: Record<string, unknown>, chief: RosterMemb
   }
   // Extra instructions come after the copied ones, so a handover note can add to them.
   const soul = [(source.soul ?? "").trim(), instructions].filter(Boolean).join("\n\n");
-  if (Buffer.byteLength(soul) > BOT_PROFILE_LIMITS.soul) {
-    return { status: 400, error: `the copied instructions plus yours are over ${BOT_PROFILE_LIMITS.soul} bytes; shorten instructions` };
+  if (soul.length > BOT_PROFILE_LIMITS.soul) {
+    return { status: 400, error: `the copied instructions plus yours are over ${BOT_PROFILE_LIMITS.soul} characters; shorten instructions` };
   }
   return { name, role: role || source.title?.trim() || "", instructions, soul, modelSelection: source.modelSelection };
 }

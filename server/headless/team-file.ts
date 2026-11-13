@@ -212,7 +212,7 @@ export function checkTeamFile(input: TeamFileInput, file: string, dir: string): 
     }
     const soul = kept(text(dir, bot.soul, `${where} soul`), `${where}: its soul`);
     const description = kept(bot.description, `${where}: its description`);
-    if (soul !== undefined && Buffer.byteLength(soul.trimEnd(), "utf8") > BOT_PROFILE_LIMITS.soul) throw usageError(`${where}: soul is over ${BOT_PROFILE_LIMITS.soul} bytes`);
+    if (soul !== undefined && soul.trimEnd().length > BOT_PROFILE_LIMITS.soul) throw usageError(`${where}: soul is over ${BOT_PROFILE_LIMITS.soul} characters`);
     let tools: ToolScope | null | undefined;
     if (bot.tools) {
       const scope = parseToolScope(bot.tools);

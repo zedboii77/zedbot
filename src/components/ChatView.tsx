@@ -3,7 +3,7 @@ import { useAdvancedMode } from "@/lib/interface-mode";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { ThreadLinkContext } from "@/components/ThreadLinkMenu";
 import { useShowThreads } from "@/lib/thread-preferences";
-import { AlertTriangle, ChevronLeft, ChevronRight, Copy, Monitor, RefreshCw, Reply, Square, Webhook } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Monitor, Reply, Square, Webhook } from "lucide-react";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { ACTION_ICON, ChatBusyContext, CopyButton, MESSAGE_ROW, MessageActions, messageActionClass, ReplyAction, type MessageMenuItem } from "@/components/MessageActions";
 import { copyText } from "@/lib/copy-text";
@@ -13,7 +13,7 @@ import { useSpeech } from "@/lib/tts/useSpeech";
 import { localSystemVoiceActive } from "@/lib/local-voice";
 import { computerStartLine, useScreensWhile } from "@/lib/computer-start";
 import { rememberComputerPanelOpen } from "@/lib/computer-panel-focus";
-import { useCaptionChrome, useDesktopCapabilities } from "@/components/DesktopCapabilities";
+import { useCaptionChrome } from "@/components/DesktopCapabilities";
 import {
   api,
   currentTaskBot,
@@ -30,35 +30,24 @@ import {
   awayFromMainThread,
   openBot,
 } from "@/state/store";
-import { EngineSetup } from "./EngineSetup";
-import { CHATGPT_USAGE_URL, ManageUsageLink } from "./ChatGptPlanStatus";
-import { CODEX_USAGE_URL, codexUsageLimitReached } from "../../shared/codex-usage-limit";
-import { ClaudeUpdatePrompt } from "./ClaudeUpdatePrompt";
-import { MacCuaRecoveryActions } from "./MacCuaRecoveryActions";
-import { macCuaPermissionMessage, missingMacCuaPermissions } from "@/lib/mac-cua-permissions";
-import { claudeUpdateTarget, failedTurnCause, failedTurnNotice, signedOutEngine } from "@/lib/failed-turn";
-import { plainErrorLine } from "@/lib/plain-error";
-import { openPlaceAction, placeRowViewFor, usePlaceSeat, worksOnSimpleLabel } from "@/lib/place-view";
-import type { PlaceRow } from "../../shared/place-view";
-import { trialCreditKind, type TrialCreditRefusal } from "../../shared/trial-credit";
-import { TrialCreditNotice } from "./TrialCreditNotice";
-import { PartlyDoneRow } from "./PartlyDoneRow";
+import { ErrorRow, FailedTurnRow } from "./ChatErrorRows";
+import { OpenChamberMessageRow } from "./OpenChamberMessageRow";
+export { ErrorRow, FailedTurnRow };
+import { failedTurnCause } from "@/lib/failed-turn";
 import { isPureLeakedSystemHarnessMessage, stripLeakedSystemHarnessMessages } from "../../shared/system-message-guard.ts";
 import { ConversationalReply, QuickModelNote, isConversational, useReplySegments, useThreadOpenedAt } from "./ConversationalReply";
-import type { LocaleKey } from "@/locales";
-import { isProviderSafetyBlock, PROVIDER_SAFETY_HELP_URL } from "../../shared/provider-safety";
 import { isCancelledTranscriptRow, PERSON_STOPPED_TURN_NAME } from "../../shared/client-cancel";
 import { stopNoticeDue, useStoppedAt } from "@/lib/stop-turn";
-import { THIS_COMPUTER_NOT_READY } from "../../shared/your-computer";
 import { BotAvatar } from "./Avatar";
 import { TurnPresence } from "./TurnPresence";
-import { showToolCallsEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
+import { conversationStyleMode, isOpenChamberConversation, reasoningCollapseMode, showToolCallsEnabled, showReasoningEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
 import { normalizeState, stateForBot } from "@/lib/mascot";
 import { peerLine, peerPreview, peerRequest, type PeerLine } from "@/lib/peer-message"; import { PEER_HOW, PeerCompactRow, PeerMessagesContext, PeerOpenedActions } from "./PeerExchange";
 import { showWorkingDots } from "@/lib/turn-tail";
 import { lastNonReceipt } from "@/lib/receipts";
 import { useTurnLive } from "@/state/turn-status"; import { isLiveReply, StreamingReplyContext, streamedReply, useHasLiveReply, useLiveTranscript } from "@/state/live-reply"; import { useTurnNow } from "./NowCard"; import { useThreadRoutineRun } from "@/state/older-routine-runs";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { ReasoningBlock } from "./ReasoningBlock";
 import { LiveToolsContext, useLiveToolIds } from "@/hooks/use-live-tool-ids";
 import { VoiceNoteBubble, type VoiceNoteAttachment } from "./VoiceNoteBubble";
 import { RawMarkdownView, RawToggleAction } from "./RawMarkdownToggle";
@@ -79,7 +68,7 @@ import { RichMessageRow, UserLineNote, richRowKind } from "./RichMessageRow"; im
 import { Composer } from "./Composer";
 import { ChatErrorBanner, ChatNotice } from "./ChatErrorBanner";
 import { ThreadContextWarning } from "./ContextWarning";
-import { UsageAlert, useLimitResetContinue, usePastLimitNotice } from "./EngineUsage";
+import { UsageAlert } from "./EngineUsage";
 import { ChatFindBar } from "./ChatFindBar";
 import { ReplyQuote } from "./ReplyQuote";
 import { ConnectorCard } from "./ConnectorCard";
@@ -128,7 +117,7 @@ import { EmptyChat } from "./ChatEmptyState";
 import { PinnedBanner } from "./ChatPinnedBanner";
 import { highlightCitationSource } from "@/lib/citations-dom";
 import { useCanWriteIn, useReactor } from "@/lib/cloud-guest";
-import { formattedReplyWidth, isFormattedReply, splitReplyBlocks } from "@/lib/formatted-reply";
+import { formattedReplyWidth, isFormattedReply, openChamberReplyWidth, splitReplyBlocks } from "@/lib/formatted-reply";
 import { otherSpeaker } from "@/lib/own-profile"; import { useSharedRun } from "./SharedQueueLine";
 import { latestFailure, latestReply, type TranscriptSnapshot } from "@/lib/transcript-announcer";
 import { pendingApprovals } from "./PendingApproval";
@@ -148,11 +137,13 @@ interface ChatRows {
   speakerViewer?: string | null;
   focus: AppState["focusMessage"];
   showToolCalls: boolean;
+  showReasoning: boolean;
+  reasoningCollapse: "auto" | "manual";
   locale: string;
   bubbleStyle?: ReturnType<typeof userBubbleStyle>;
   dispatch: Dispatch<Action>;
   onBranch: (messageId: string) => boolean;
-  conversational: boolean; simple?: boolean; canReact: boolean;
+  conversational: boolean; simple?: boolean; openChamber?: boolean; canReact: boolean;
   openedAt: number;
 }
 
@@ -162,127 +153,6 @@ function useChatRows(): ChatRows {
   const rows = useContext(ChatRowsContext);
   if (!rows) throw new Error("a chat row outside ChatView");
   return rows;
-}
-
-export function ErrorRow({
-  message,
-  headline: plainHeadline,
-  onRetry,
-  action,
-  setupInstance,
-  claudeUpdateInstance,
-}: {
-  message: string;
-  headline?: string;
-  onRetry?: () => void;
-  action?: { label: string; onClick: () => void } | null;
-  setupInstance?: InstanceInfo;
-  claudeUpdateInstance?: InstanceInfo;
-}) {
-  const { capabilities, ready } = useDesktopCapabilities();
-  const failedPermissions = missingMacCuaPermissions(message);
-  const currentPermissions = missingMacCuaPermissions(capabilities.localComputer.message);
-  const macCuaReason = ready && capabilities.host.platform === "darwin" &&
-    capabilities.localComputer.available === false && capabilities.localComputer.reasonCode !== "remote-server" &&
-    message.startsWith(THIS_COMPUTER_NOT_READY) &&
-    failedPermissions.length > 0 && failedPermissions.join(",") === currentPermissions.join(",")
-    ? macCuaPermissionMessage(currentPermissions)
-    : null;
-  const headline = macCuaReason ?? plainHeadline ?? message;
-  const usageUrl = action ? null : message.includes("subscription_sharing_usage_limit_exceeded") ? CHATGPT_USAGE_URL : codexUsageLimitReached(message) ? CODEX_USAGE_URL : null;
-  return (
-    <div className="flex justify-start">
-      <div className="w-fit max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct))] rounded-xl border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-[14px] text-danger">
-        <div className="flex items-start gap-2">
-          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-          <span className="min-w-0 break-words">{headline}</span>
-        </div>
-        {headline !== message && <details className="mt-2 text-[12px] text-ink-secondary"><summary className="cursor-pointer">{macCuaReason ? t("computer.mac.permission.driverDetail") : t("chat.error.details")}</summary><p className="mt-1 break-words">{message}</p></details>}
-        {macCuaReason &&
-          <MacCuaRecoveryActions reason={message} />}
-        {usageUrl ? (
-          <ManageUsageLink href={usageUrl} className="ui-button ui-button-md mt-2 border-transparent bg-ink text-app hover:brightness-110" />
-        ) : claudeUpdateInstance ? (
-          <ClaudeUpdatePrompt instance={claudeUpdateInstance} onRetry={onRetry} />
-        ) : isProviderSafetyBlock(message) ? (
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-secondary">
-            {t("chat.providerSafety.guidance")}{" "}
-            <a href={PROVIDER_SAFETY_HELP_URL} target="_blank" rel="noreferrer" className="underline">{t("chat.providerSafety.about")}</a>
-          </p>
-        ) : setupInstance &&
-        !(setupInstance.snapshot.state === "available" && setupInstance.snapshot.authenticated !== false) ? (
-          <EngineSetup instance={setupInstance} className="mt-2 text-ink-secondary" />
-        ) : action !== undefined ? (
-          action && (
-            <button
-              type="button"
-              onClick={action.onClick}
-              className="ui-button ui-button-md mt-1.5 rounded-full border-danger/30 bg-transparent text-danger hover:bg-danger/15"
-            >
-              {action.label}
-            </button>
-          )
-        ) : (
-          onRetry && (
-            <button
-              onClick={onRetry}
-              className="ui-button ui-button-md mt-1.5 rounded-full border-danger/30 bg-transparent text-danger hover:bg-danger/15"
-            >
-              <RefreshCw size={12} /> {t("chat.retry")}
-            </button>
-          )
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PlaceFailedRow({ place, botId, threadId, onRetry }: {
-  place: PlaceRow;
-  botId: string;
-  threadId?: string;
-  onRetry?: () => void;
-}) {
-  const dispatch = useStoreDispatch(), config = useStoreSelector((state) => state.config);
-  const { capabilities } = useDesktopCapabilities();
-  const seat = usePlaceSeat(config, capabilities);
-  const computer = useStoreSelector((state) => state.bots.find((candidate) => candidate.id === botId)?.computer);
-  const view = placeRowViewFor(place, seat, worksOnSimpleLabel(computer, capabilities.host.platform));
-  const id = view.action?.id;
-  const onClick = !id ? undefined
-    : id === "try-again" ? onRetry
-    : () => { openPlaceAction(id, { botId, threadId }, dispatch); };
-  return <ErrorRow message={view.line} action={view.action && onClick ? { label: view.action.label, onClick } : null} />;
-}
-
-const TRIAL_CREDIT_LINE: Record<"paused" | "too_low", LocaleKey> = { paused: "engines.trialCreditPaused", too_low: "engines.trialCreditTooLow" };
-function TrialCreditFailedRow({ kind, onRetry }: { kind: TrialCreditRefusal; onRetry?: () => void }) {
-  const dispatch = useStoreDispatch();
-  if (kind === "used_up" || kind === "ended") return <TrialCreditNotice kind={kind} />;
-  if (kind === "paused") return <ErrorRow message={t(TRIAL_CREDIT_LINE[kind])} onRetry={onRetry} />;
-  return <ErrorRow message={t(TRIAL_CREDIT_LINE[kind])} action={{ label: t("chat.error.connectOwnAi"), onClick: () => dispatch({ type: "toggleAppSettings", open: true, section: "engines" }) }} />;
-}
-
-export function FailedTurnRow({ tool, engine, onRetry, botId, threadId, messageAt }: { tool: NonNullable<Message["tool"]>; engine: InstanceInfo | undefined; onRetry?: () => void; botId?: string; threadId?: string; messageAt?: number }) {
-  const resume = useLimitResetContinue(botId, threadId, tool.limitResetsAt);
-  const past = usePastLimitNotice(tool, messageAt);
-  if (tool.place && botId) return <PlaceFailedRow place={tool.place} botId={botId} threadId={threadId} onRetry={onRetry} />;
-  const credit = trialCreditKind(failedTurnCause(tool.name) ?? "");
-  if (credit) return <TrialCreditFailedRow kind={credit} onRetry={onRetry} />;
-  const { cause, notice } = failedTurnNotice(tool);
-  if (tool.partial) return <PartlyDoneRow cause={notice ?? cause} onRetry={onRetry} />;
-  if (past) return past;
-  const signedOut = signedOutEngine(tool, engine);
-  return (
-    <ErrorRow
-      message={notice ?? cause}
-      headline={signedOut ? t("chat.error.signedOut", { name: signedOut.displayName }) : notice ?? plainErrorLine(cause)}
-      onRetry={onRetry}
-      action={resume}
-      setupInstance={tool.setup ? engine : undefined}
-      claudeUpdateInstance={tool.claudeUpdate ? claudeUpdateTarget(engine) : undefined}
-    />
-  );
 }
 
 export { MessageBoundary };
@@ -330,7 +200,7 @@ const Bubble = memo(function Bubble({
   replyTarget?: Message;
   onReply: (message: Message) => void;
 }) {
-  const { botId, threadId, botName, voiceId, tts, localVoice, bots, mentionPeers, mentionPerson, focus, dispatch, onBranch, bubbleStyle, conversational, simple, canReact, openedAt, speakerViewer } = useChatRows(), busy = onRegenerate || versions ? use(ChatBusyContext) : false;
+  const { botId, threadId, botName, voiceId, tts, localVoice, bots, mentionPeers, mentionPerson, focus, dispatch, onBranch, bubbleStyle, conversational, simple, openChamber = false, canReact, openedAt, speakerViewer, showReasoning, reasoningCollapse } = useChatRows(), busy = onRegenerate || versions ? use(ChatBusyContext) : false;
   const remoteClient = window.ogb?.remoteClient?.active === true;
   const peer = peerLine(message) ?? peerRequest(message, botId);
   const user = message.role === "user" && !peer;
@@ -377,9 +247,9 @@ const Bubble = memo(function Bubble({
   const reply = useReplySegments(conversational && !user && !peer && !viewRaw && !replyTarget && message.kind === "text", text, message.at, openedAt, message.id);
   const split = reply.segments.length > 1;
   // Simple mode draws each table of a reply as its own card between the reply's prose bubbles.
-  const blocks = useMemo(() => simple && !user && !peer && !viewRaw && !split && text ? splitReplyBlocks(text) : null, [simple, user, peer, viewRaw, split, text]);
+  const blocks = useMemo(() => simple && !openChamber && !user && !peer && !viewRaw && !split && text ? splitReplyBlocks(text) : null, [simple, openChamber, user, peer, viewRaw, split, text]);
   const tabled = Boolean(blocks?.some((block) => block.kind === "table"));
-  const formatted = !simple && !user && !split && isFormattedReply(text);
+  const formatted = !simple && !openChamber && !user && !split && isFormattedReply(text);
   const webhookView = user ? webhookMessageView(text) : null;
   const cited = user && !webhookView ? splitTranscriptCitations(text) : null;
   const attachments = user && !webhookView ? splitTranscriptAttachments(cited?.display ?? text) : null;
@@ -397,7 +267,7 @@ const Bubble = memo(function Bubble({
   if (user && editing && !webhookView && !hasAttachments) {
     return (
       <div className="flex w-full justify-end">
-        <BubbleEditor initial={text} bubbleStyle={bubbleStyle} onCancel={onCancelEdit} onSubmit={(edited) => onSubmitEdit(message.id, edited)} />
+        <BubbleEditor initial={text} bubbleStyle={bubbleStyle} openChamber={openChamber} onCancel={onCancelEdit} onSubmit={(edited) => onSubmitEdit(message.id, edited)} />
       </div>
     );
   }
@@ -412,159 +282,204 @@ const Bubble = memo(function Bubble({
   };
   const togglePin = () =>
     dispatch({ type: "updateTask", botId, threadId, patch: { pinnedMessageId: pinned ? "" : message.id } });
+  const inlineActions = !simple || openChamber;
   const botActions = !user && (
-    <MessageActions side="bot" forceOpen={viewRaw || speaking} menu={simple ? [...replyAndCopy(() => onReply(message), text), ...botMenu] : botMenu}>
-      {!simple && <ReplyAction onReply={() => onReply(message)} />}
+    <MessageActions
+      side="bot"
+      forceOpen={viewRaw || speaking}
+      touchVisible={openChamber}
+      className={openChamber ? "self-auto pb-0" : undefined}
+      menu={inlineActions ? botMenu : [...replyAndCopy(() => onReply(message), text), ...botMenu]}
+    >
+      {inlineActions && <ReplyAction onReply={() => onReply(message)} />}
       {canReact && !peer && <ReactAction threadId={threadId} message={message} />}
-      {!simple && text && <CopyButton text={text} className={messageActionClass} />}
+      {inlineActions && text && <CopyButton text={text} className={messageActionClass} />}
       {text && viewRaw && <RawToggleAction active onToggle={() => setViewRaw(false)} className={messageActionClass} />}
       {text && speaking && <SpeakButton text={text} botId={botId} messageId={message.id} voiceId={voiceId} tts={tts} localVoice={localVoice} className={cn(messageActionClass, "text-accent")} />}
     </MessageActions>
   );
-
-  return (
-    <div {...{ [MESSAGE_ROW]: "" }} className={cn("group flex w-full flex-col", user ? "animate-msg-in items-end" : "items-start", simple && join?.above && SIMPLE_STACKED)}>
-      {message.relay ? <RelayLabel message={message} /> : peer && <PeerLabel peer={peer} />}
-      {speaker && <div className="mb-0.5 px-1 text-[12px] font-medium text-ink-secondary">{speaker}</div>}
-      <div className={cn("flex w-full items-center gap-1.5", user ? "justify-end" : "justify-start")}>
-        {user && (
-          <MessageActions
-            side="user"
-            menu={[
-              ...(simple ? replyAndCopy(() => onReply(message), visibleText) : []),
-              ...userMessageMenu({
-                messageId: message.id, save: botMenu.filter((item) => item.key === TEAM_MEMORY_ITEM),
-                onEdit: !speaker && message.kind === "text" && !webhookView && !hasAttachments && !message.id.startsWith("optimistic-")
-                  ? () => onStartEdit(message.id) : undefined,
-                pin: remoteClient ? undefined : { pinned, onToggle: togglePin },
-              }),
-            ]}
-          >
-            {!simple && <ReplyAction onReply={() => onReply(message)} />}
-            {!simple && Boolean(visibleText.trim()) && <CopyButton text={visibleText} className={messageActionClass} />}
-          </MessageActions>
-        )}
-        <div
-          data-chat-bubble={simple ? "simple" : ""}
-          className={cn(
-            tabled ? "w-full" : "w-fit",
-            simple ? !tabled && SIMPLE_BUBBLE_MAX : "max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct))] rounded-2xl text-[15px] leading-relaxed",
-            emerging && !streamedReply(message.id) && "turn-answer",
-            user && webhookView
-              ? cn("overflow-hidden border border-accent/25 bg-card text-ink", simple ? cn("rounded-[18px]", SIMPLE_BUBBLE_TEXT) : "shadow-[0_10px_30px_rgba(0,0,0,0.18)]")
-              : attachmentsOnly || split || tabled
-                ? cn("text-ink", simple && SIMPLE_BUBBLE_TEXT)
-                : user
-                  ? cn("whitespace-pre-wrap [overflow-wrap:anywhere] text-ink", simple ? SIMPLE_USER_BUBBLE : "bg-bubble-user px-4 py-2.5", ownBubbleStyle && "user-bubble-colored", simple && ownBubbleStyle && "antialiased")
-                  : formatted
-                    ? cn(formattedReplyWidth(text), "px-1 text-ink")
-                    : simple ? SIMPLE_BOT_BUBBLE : "bg-card px-4 py-2.5 text-ink",
-            simple && join && !split && !attachmentsOnly && !tabled && joinedCorners(user ? "end" : "start", join),
-          )}
-          style={user && !webhookView && !attachmentsOnly ? ownBubbleStyle : undefined}
-          title={workedFor === undefined ? new Date(message.at).toLocaleString(intlLocale()) : `${workedLabel(workedFor)} · ${new Date(message.at).toLocaleString(intlLocale())}`}
-        >
-          {replyTarget && (
-            <div className="mb-2">
-              <ReplyQuote
-                message={replyTarget}
-                fallbackName={botName}
-                compact
-                onJump={() =>
-                  dispatch({ type: "focusMessage", threadId, messageId: replyTarget.id })
-                }
-              />
-            </div>
-          )}
-          {user && webhookView ? (
-            <div className="min-w-[300px] max-w-[520px]">
-              <div className="flex items-center gap-2 border-b border-accent/15 bg-accent/[0.055] px-4 py-2.5 text-[12px] font-medium text-accent">
-                <Webhook size={13} />
-                <span>{t("chat.webhookTask")}</span>
-              </div>
-              <div className="chat-text px-4 py-3 whitespace-pre-wrap">{webhookView.task}</div>
-              {webhookView.payload && (
-                <details className="border-t border-hairline/30 bg-inset/25 px-4 py-2.5 text-[12px] text-ink-secondary">
-                  <summary className="cursor-pointer select-none hover:text-ink">{t("chat.viewPayload")}</summary>
-                  <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-hairline/25 bg-black/25 p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-ink-secondary">{webhookView.payload}</pre>
-                </details>
-              )}
-            </div>
-          ) : user ? (
-            <>
-              {attachments && <AttachmentGallery images={attachments.images} files={attachments.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} className={!visibleText ? "mb-0" : undefined} />}
-              {visibleText && (
-                <div
-                  className={cn("chat-text", collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}
-                  data-citation-source={message.id}
-                  data-citation-owner-type="bot"
-                  data-citation-owner={botId}
-                  data-citation-thread={threadId}
-                >
-                  <ThreadRefText text={visibleText} peers={mentionPeers} />
-                </div>
-              )}
-              {cited && <SentCitations
-                citations={cited.citations}
-                onNavigate={async (citation: CitationAttachment) => {
-                  if (citation.source.ownerType !== "bot" || !onBranch(citation.source.messageId)) return false;
-                  dispatch({ type: "focusMessage", threadId, messageId: citation.source.messageId });
-                  return highlightCitationSource(citation);
-                }}
-              />}
-              {message.steered && (
-                <div className="mt-1 text-[11px] text-ink-tertiary" title={t("chat.sentMidTurnHint")}>
-                  {t("chat.sentMidTurn")}
-                </div>
-              )}
-              {message.quickModel && <QuickModelNote model={message.quickModel} />}
-              <UserLineNote message={message} />
-              {collapsible && (
-                <button onClick={() => setExpanded(true)} className="mt-1 text-[13px] text-ink-secondary hover:text-ink">
-                  {t("chat.showFull")}
-                </button>
-              )}
-              {expanded && (
-                <button onClick={() => setExpanded(false)} className="mt-1 text-[13px] text-ink-secondary hover:text-ink">
-                  {t("chat.showLess")}
-                </button>
-              )}
-            </>
-          ) : (
-            <MessageBoundary key={viewRaw ? "raw" : "rendered"} fallbackText={text || t("chat.generatedImage")}>
-              {voiceNotes.length > 0 && (
-                <div className={cn("flex flex-col", (text || generatedPaths.length > 0 || linkedFiles.length > 0) && "mb-2")}>
-                  {voiceNotes.map((note) => (
-                    <VoiceNoteBubble key={note.path} attachment={note} />
-                  ))}
-                </div>
-              )}
-              {!group && <AttachmentGallery images={generatedPaths} files={linkedFiles} originals={attached.originals} message={{ threadId, messageId: message.id }} className={text ? undefined : "mb-0"} eager={eagerAttachments} />}
-              {split ? (
-                <ConversationalReply simple={simple} join={join} segments={reply.segments} firstNew={reply.firstNew} citation={{ messageId: message.id, botId, threadId }}
-                  renderSegment={(segment) => <ChatMarkdown text={segment} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} originals={group?.originals} />} />
-              ) : tabled && blocks ? (
-                <ReplyBlocks blocks={blocks} join={join} tray={botActions} citation={{ messageId: message.id, ownerType: "bot", ownerId: botId, threadId }}
-                  render={(block) => <ChatMarkdown text={block} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} originals={group?.originals} />} />
-              ) : viewRaw && text ? (
-                <div data-citation-source={message.id} data-citation-owner-type="bot" data-citation-owner={botId} data-citation-thread={threadId}><RawMarkdownView text={text} /></div>
-              ) : text ? (
-                <div data-citation-source={message.id} data-citation-owner-type="bot" data-citation-owner={botId} data-citation-thread={threadId}><ChatMarkdown text={text} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} originals={group?.originals} /></div>
-              ) : null}
-              {group && <AttachmentGallery images={group.images} files={group.files} originals={group.originals} message={{ threadId, messageId: message.id }} eager={eagerAttachments} beneath />}
-            </MessageBoundary>
+  const userActions = user && (
+    <MessageActions
+      side="user"
+      touchVisible={openChamber}
+      className={openChamber ? "self-auto pb-0" : undefined}
+      menu={[
+        ...(!inlineActions ? replyAndCopy(() => onReply(message), visibleText) : []),
+        ...userMessageMenu({
+          messageId: message.id, save: botMenu.filter((item) => item.key === TEAM_MEMORY_ITEM),
+          onEdit: !speaker && message.kind === "text" && !webhookView && !hasAttachments && !message.id.startsWith("optimistic-")
+            ? () => onStartEdit(message.id) : undefined,
+          pin: remoteClient ? undefined : { pinned, onToggle: togglePin },
+        }),
+      ]}
+    >
+      {inlineActions && <ReplyAction onReply={() => onReply(message)} />}
+      {inlineActions && Boolean(visibleText.trim()) && <CopyButton text={visibleText} className={messageActionClass} />}
+    </MessageActions>
+  );
+  const bubbleElement = (
+    <div
+      data-chat-bubble={openChamber ? "openchamber" : simple ? "simple" : ""}
+      className={cn(
+        openChamber
+          ? user
+            ? cn(
+                "max-w-[min(85%,var(--chat-bubble-max))]",
+                emerging && !streamedReply(message.id) && "turn-answer",
+                webhookView
+                  ? "w-full overflow-hidden rounded-[18px] rounded-ee-[6px] border border-accent/25 bg-card text-ink"
+                  : attachmentsOnly
+                    ? "w-fit text-ink"
+                    : cn("w-fit whitespace-pre-wrap [overflow-wrap:anywhere] rounded-[18px] rounded-ee-[6px] bg-bubble-user px-4 py-2.5 text-[15px] leading-[1.55] text-ink", ownBubbleStyle && "user-bubble-colored antialiased"),
+              )
+            : cn(
+                "min-w-0 text-[15px] leading-[1.65] text-ink",
+                openChamberReplyWidth(viewRaw ? "" : text),
+                emerging && !streamedReply(message.id) && "turn-answer",
+              )
+          : cn(
+              tabled ? "w-full" : "w-fit",
+              simple ? !tabled && SIMPLE_BUBBLE_MAX : "max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct))] rounded-2xl text-[15px] leading-relaxed",
+              emerging && !streamedReply(message.id) && "turn-answer",
+              user && webhookView
+                ? cn("overflow-hidden border border-accent/25 bg-card text-ink", simple ? cn("rounded-[18px]", SIMPLE_BUBBLE_TEXT) : "shadow-[0_10px_30px_rgba(0,0,0,0.18)]")
+                : attachmentsOnly || split || tabled
+                  ? cn("text-ink", simple && SIMPLE_BUBBLE_TEXT)
+                  : user
+                    ? cn("whitespace-pre-wrap [overflow-wrap:anywhere] text-ink", simple ? SIMPLE_USER_BUBBLE : "bg-bubble-user px-4 py-2.5", ownBubbleStyle && "user-bubble-colored", simple && ownBubbleStyle && "antialiased")
+                    : formatted
+                      ? cn(formattedReplyWidth(text), "px-1 text-ink")
+                      : simple ? SIMPLE_BOT_BUBBLE : "bg-card px-4 py-2.5 text-ink",
+              simple && join && !split && !attachmentsOnly && !tabled && joinedCorners(user ? "end" : "start", join),
+            ),
+      )}
+      style={user && !webhookView && !attachmentsOnly ? ownBubbleStyle : undefined}
+      title={workedFor === undefined ? new Date(message.at).toLocaleString(intlLocale()) : `${workedLabel(workedFor)} · ${new Date(message.at).toLocaleString(intlLocale())}`}
+    >
+      {replyTarget && (
+        <div className="mb-2">
+          <ReplyQuote
+            message={replyTarget}
+            fallbackName={botName}
+            compact
+            onJump={() =>
+              dispatch({ type: "focusMessage", threadId, messageId: replyTarget.id })
+            }
+          />
+        </div>
+      )}
+      {user && webhookView ? (
+        <div className="min-w-[min(300px,100%)] max-w-[520px]">
+          <div className="flex items-center gap-2 border-b border-accent/15 bg-accent/[0.055] px-4 py-2.5 text-[12px] font-medium text-accent">
+            <Webhook size={13} />
+            <span>{t("chat.webhookTask")}</span>
+          </div>
+          <div className="chat-text px-4 py-3 whitespace-pre-wrap">{webhookView.task}</div>
+          {webhookView.payload && (
+            <details className="border-t border-hairline/30 bg-inset/25 px-4 py-2.5 text-[12px] text-ink-secondary">
+              <summary className="cursor-pointer select-none hover:text-ink">{t("chat.viewPayload")}</summary>
+              <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-hairline/25 bg-black/25 p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-ink-secondary">{webhookView.payload}</pre>
+            </details>
           )}
         </div>
-        {!tabled && botActions}
-        <span
-          className={cn(
-            "self-end pb-1 text-[11px] tabular-nums text-ink-tertiary opacity-0 transition-opacity group-hover:opacity-100",
-            user ? "order-first mr-2" : "ml-2",
+      ) : user ? (
+        <>
+          {attachments && <AttachmentGallery images={attachments.images} files={attachments.files} message={{ threadId, messageId: message.id }} eager={eagerAttachments} className={!visibleText ? "mb-0" : undefined} />}
+          {visibleText && (
+            <div
+              className={cn("chat-text", collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}
+              data-citation-source={message.id}
+              data-citation-owner-type="bot"
+              data-citation-owner={botId}
+              data-citation-thread={threadId}
+            >
+              <ThreadRefText text={visibleText} peers={mentionPeers} />
+            </div>
           )}
-        >
-          {formatTime(message.at)}
-        </span>
-      </div>
+          {cited && <SentCitations
+            citations={cited.citations}
+            onNavigate={async (citation: CitationAttachment) => {
+              if (citation.source.ownerType !== "bot" || !onBranch(citation.source.messageId)) return false;
+              dispatch({ type: "focusMessage", threadId, messageId: citation.source.messageId });
+              return highlightCitationSource(citation);
+            }}
+          />}
+          {message.steered && (
+            <div className="mt-1 text-[11px] text-ink-tertiary" title={t("chat.sentMidTurnHint")}>
+              {t("chat.sentMidTurn")}
+            </div>
+          )}
+          {message.quickModel && <QuickModelNote model={message.quickModel} />}
+          <UserLineNote message={message} />
+          {collapsible && (
+            <button onClick={() => setExpanded(true)} className="mt-1 text-[13px] text-ink-secondary hover:text-ink">
+              {t("chat.showFull")}
+            </button>
+          )}
+          {expanded && (
+            <button onClick={() => setExpanded(false)} className="mt-1 text-[13px] text-ink-secondary hover:text-ink">
+              {t("chat.showLess")}
+            </button>
+          )}
+        </>
+      ) : (
+        <MessageBoundary key={viewRaw ? "raw" : "rendered"} fallbackText={text || t("chat.generatedImage")}>
+          {voiceNotes.length > 0 && (
+            <div className={cn("flex flex-col", (text || generatedPaths.length > 0 || linkedFiles.length > 0) && "mb-2")}>
+              {voiceNotes.map((note) => (
+                <VoiceNoteBubble key={note.path} attachment={note} />
+              ))}
+            </div>
+          )}
+          {!group && <AttachmentGallery images={generatedPaths} files={linkedFiles} originals={attached.originals} message={{ threadId, messageId: message.id }} className={text ? undefined : "mb-0"} eager={eagerAttachments} />}
+          {message.reasoning && showReasoning && (
+            <ReasoningBlock
+              messageId={message.id}
+              text={message.reasoning}
+              thinking={isLiveReply(message) && !text.trim()}
+              collapseMode={reasoningCollapse}
+            />
+          )}
+          {split ? (
+            <ConversationalReply simple={simple} openChamber={openChamber} join={join} segments={reply.segments} firstNew={reply.firstNew} citation={{ messageId: message.id, botId, threadId }}
+              renderSegment={(segment) => <ChatMarkdown text={segment} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} originals={group?.originals} />} />
+          ) : tabled && blocks ? (
+            <ReplyBlocks blocks={blocks} join={join} tray={botActions} citation={{ messageId: message.id, ownerType: "bot", ownerId: botId, threadId }}
+              render={(block) => <ChatMarkdown text={block} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} originals={group?.originals} />} />
+          ) : viewRaw && text ? (
+            <div data-citation-source={message.id} data-citation-owner-type="bot" data-citation-owner={botId} data-citation-thread={threadId}><RawMarkdownView text={text} /></div>
+          ) : text ? (
+            <div data-citation-source={message.id} data-citation-owner-type="bot" data-citation-owner={botId} data-citation-thread={threadId}><ChatMarkdown text={text} mentionPeers={mentionPeers} mentionPerson={mentionPerson} message={{ threadId, messageId: message.id }} delivered={group?.delivered} originals={group?.originals} /></div>
+          ) : null}
+          {group && <AttachmentGallery images={group.images} files={group.files} originals={group.originals} message={{ threadId, messageId: message.id }} eager={eagerAttachments} beneath />}
+        </MessageBoundary>
+      )}
+    </div>
+  );
+
+  return (
+    <div {...{ [MESSAGE_ROW]: "" }} className={cn("group flex w-full flex-col", user ? "animate-msg-in items-end" : "items-start", simple && !openChamber && join?.above && SIMPLE_STACKED)}>
+      {message.relay ? <RelayLabel message={message} /> : peer && <PeerLabel peer={peer} />}
+      {speaker && <div className="mb-0.5 px-1 text-[12px] font-medium text-ink-secondary">{speaker}</div>}
+      {openChamber ? (
+        <OpenChamberMessageRow user={user} at={message.at} actions={user ? userActions : botActions}>
+          {bubbleElement}
+        </OpenChamberMessageRow>
+      ) : (
+        <div className={cn("flex w-full items-center gap-1.5", user ? "justify-end" : "justify-start")}>
+          {userActions}
+          {bubbleElement}
+          {!tabled && botActions}
+          <span
+            className={cn(
+              "self-end pb-1 text-[11px] tabular-nums text-ink-tertiary opacity-0 transition-opacity group-hover:opacity-100",
+              user ? "order-first mr-2" : "ml-2",
+            )}
+          >
+            {formatTime(message.at)}
+          </span>
+        </div>
+      )}
       <ReactionChips threadId={threadId} message={message} bots={bots} align={user ? "end" : "start"} canReact={canReact} />
       {peer && expanded && peerLong && <PeerOpenedActions peer={peer} bots={bots} botId={botId} botName={botName} onFold={() => { setExpanded(false); setFolded(true); }} />}
       {forks.length > 1 && (
@@ -665,8 +580,8 @@ const MessagesList = memo(function MessagesList({
   onRegenerate: () => void;
   onReply: (message: Message) => void;
 }) {
-  const { botId, threadId, botName, botColor, bots, hasMore, focus, showToolCalls, locale, simple = false } = useChatRows(), busy = use(ChatBusyContext);
-  const messages = useLiveTranscript(threadId, saved, transcript);
+  const { botId, threadId, botName, botColor, bots, hasMore, focus, showToolCalls, showReasoning, locale, simple = false, openChamber = false } = useChatRows(), busy = use(ChatBusyContext);
+  const messages = useLiveTranscript(threadId, saved, transcript, undefined, undefined, showReasoning);
   // A finished turn keeps the bot's progress lines and folds only its tool steps under "Worked for", in both modes.
   const items = useMemo(() => groupTranscript(messages), [messages, locale]);
   const newestMessageId = messages.at(-1)?.id;
@@ -677,7 +592,7 @@ const MessagesList = memo(function MessagesList({
   const focusedId = focus && !focus.consumed ? focus.messageId : null;
   const unreadIds = useMemo(() => unreadMessageIds(messages, unreadDividerId), [messages, unreadDividerId]);
   let dividerPlaced = false;
-  const layout = useMemo(() => simple ? simpleRowLayout(items, { botId, showToolCalls, unreadIds }) : null, [simple, items, unreadIds, showToolCalls, botId]);
+  const layout = useMemo(() => simple && !openChamber ? simpleRowLayout(items, { botId, showToolCalls, unreadIds }) : null, [simple, openChamber, items, unreadIds, showToolCalls, botId]);
   const joins = layout?.joins;
   const durations = useMemo(() => simple ? turnDurations(messages) : null, [messages, simple]);
   const dividerAbove = (rows: readonly Message[]) => {
@@ -850,6 +765,11 @@ export const ChatView = memo(function ChatView({ bot: profile }: { bot: Bot }) {
   const lastRunStep = recordedRun.at(-1);
   const showRunCard = useShowRunCard();
 
+  const showToolCalls = showToolCallsEnabled(state.config);
+  const showReasoning = showReasoningEnabled(state.config);
+  const reasoningCollapse = reasoningCollapseMode(state.config);
+  const openChamber = isOpenChamberConversation(conversationStyleMode(state.config), phone);
+
   const {
     scrollRef,
     transcriptRef,
@@ -869,6 +789,7 @@ export const ChatView = memo(function ChatView({ bot: profile }: { bot: Bot }) {
     messages,
     pinOn: [bot.busy, composerDock.pad],
     hasMore: bot.hasMore,
+    showReasoning,
   });
 
   const lastBotTextId = useMemo(
@@ -880,7 +801,6 @@ export const ChatView = memo(function ChatView({ bot: profile }: { bot: Bot }) {
   const bots = useStoreSelector((s) => s.bots, sameDrawnBots);
   const teammates = useTeammates(); const mentionPeers = useMemo(() => [...bots.filter((peer) => peer.id !== bot.id), ...teammates.peers], [bots, bot.id, teammates]);
   const focus = state.focusMessage?.threadId === bot.threadId ? state.focusMessage : null;
-  const showToolCalls = showToolCallsEnabled(state.config);
   const tts = state.config?.tts;
   const localVoice = localSystemVoiceActive();
   const locale = activeLocale();
@@ -898,8 +818,8 @@ export const ChatView = memo(function ChatView({ bot: profile }: { bot: Bot }) {
   const reactor = useReactor();
   const speakerViewer = state.config?.team && reactor !== "user" ? reactor : null;
   const rows = useMemo<ChatRows>(
-    () => ({ botId: bot.id, threadId: bot.threadId, botName: bot.name, botColor: bot.color, voiceId: bot.voice, tts, localVoice, hasMore, bots, mentionPeers, mentionPerson: { profileName: state.config?.profile?.name }, focus, showToolCalls, locale, dispatch, onBranch, bubbleStyle, conversational: isConversational(bot.replyStyle), simple: !advanced, canReact: canWrite !== false, openedAt, speakerViewer }),
-    [bot.id, bot.threadId, bot.name, bot.color, bot.voice, tts, localVoice, hasMore, bots, mentionPeers, state.config?.profile?.name, focus, showToolCalls, locale, dispatch, onBranch, bubbleStyle, bot.replyStyle, advanced, canWrite, openedAt, speakerViewer],
+    () => ({ botId: bot.id, threadId: bot.threadId, botName: bot.name, botColor: bot.color, voiceId: bot.voice, tts, localVoice, hasMore, bots, mentionPeers, mentionPerson: { profileName: state.config?.profile?.name }, focus, showToolCalls, showReasoning, reasoningCollapse, locale, dispatch, onBranch, bubbleStyle, conversational: isConversational(bot.replyStyle), simple: !advanced, openChamber, canReact: canWrite !== false, openedAt, speakerViewer }),
+    [bot.id, bot.threadId, bot.name, bot.color, bot.voice, tts, localVoice, hasMore, bots, mentionPeers, state.config?.profile?.name, focus, showToolCalls, showReasoning, reasoningCollapse, locale, dispatch, onBranch, bubbleStyle, bot.replyStyle, advanced, openChamber, canWrite, openedAt, speakerViewer],
   );
   const currentTask = bot.tasks?.find((task) => task.threadId === bot.threadId), place = effectivePlace(bot, currentTask), team = state.config?.team, privateChat = Boolean(team) && (currentTask?.private === true || (ownChatStarted(bot.threadId) && !currentTask?.shared)), ownHelper = Boolean(team) && !privateChat && Boolean(bot.defaultBot?.person), sharedChat = Boolean(team) && !privateChat && !ownHelper;
 
@@ -958,7 +878,7 @@ export const ChatView = memo(function ChatView({ bot: profile }: { bot: Bot }) {
   const teammatesWorking = !advanced && !bot.busy && Boolean(bot.waitingForTeammates);
   const presenceVisible = waiting || popping !== null || teammatesWorking, sharedRun = useSharedRun(bot, advanced);
   const lastShownRow = windowedMessages.findLast((message) => !quietRow(message, showToolCalls));
-  const presenceUnderBubble = useHasLiveReply(bot.threadId) || Boolean(lastShownRow && isBotTextRow(lastShownRow, bot.id));
+  const presenceUnderBubble = useHasLiveReply(bot.threadId, showReasoning) || Boolean(lastShownRow && isBotTextRow(lastShownRow, bot.id));
   const announcement = useMemo((): TranscriptSnapshot => {
     const approval = pendingApprovals(messages)[0];
     return {
@@ -1146,7 +1066,7 @@ export const ChatView = memo(function ChatView({ bot: profile }: { bot: Bot }) {
 
       <div
         ref={scrollRef}
-        className="glass-scroller h-full overflow-x-hidden overflow-y-auto overscroll-y-contain px-5 [overflow-anchor:none]"
+        className={cn("glass-scroller h-full overflow-x-hidden overflow-y-auto overscroll-y-contain px-5 [overflow-anchor:none]", openChamber && "max-md:px-3.5")}
         // Simple mode's composer sits on plain canvas, so a row scrolled into view stops clear of it.
         style={advanced ? undefined : { scrollPaddingBottom: composerDock.pad }}
         {...scrollHandlers}
@@ -1225,7 +1145,7 @@ export const ChatView = memo(function ChatView({ bot: profile }: { bot: Bot }) {
               />
             }
             simple={!advanced}
-            className={cn(!advanced && presenceUnderBubble && SIMPLE_STACKED)}
+            className={cn(!advanced && !openChamber && presenceUnderBubble && SIMPLE_STACKED)}
             label={teammatesWorking ? t("chat.teammatesWorking") : sharedRun.label}
             visible={presenceVisible}
             {...now}

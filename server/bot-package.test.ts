@@ -88,8 +88,8 @@ describe("bot packages", () => {
     input.package.agents[0].soul = soul;
     const parsed = parseBotPackage(renderBotPackageMarkdown(parseBotPackage(input)));
     expect(memberFromAgent(parsed.package.agents[0]).soul).toBe(soul);
-    input.package.agents[0].soul = "🐭".repeat(6_001);
-    expect(() => parseBotPackage(input)).toThrow("24000 bytes");
+    input.package.agents[0].soul = "é".repeat(60_001);
+    expect(() => parseBotPackage(input)).toThrow("60000 characters");
   });
   it.each([
     { name: "../escape" },

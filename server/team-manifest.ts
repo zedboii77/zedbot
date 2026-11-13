@@ -35,8 +35,8 @@ const memberSchema = z.object({
   name: requiredText(100),
   title: optionalText(200),
   description: optionalText(4_000),
-  soul: z.string().refine((value) => Buffer.byteLength(value, "utf8") <= BOT_PROFILE_LIMITS.soul, {
-    error: "standing instructions must be at most 24000 bytes",
+  soul: z.string().max(BOT_PROFILE_LIMITS.soul, {
+    error: `standing instructions must be at most ${BOT_PROFILE_LIMITS.soul} characters`,
   }).optional(),
   appearance: z.object({
     color: z.enum(MAUS_COLOR_NAMES, { error: "is not supported" }),

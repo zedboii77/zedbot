@@ -13,6 +13,7 @@ export function redactBotAuthored<T extends Omit<WireMessage, "id" | "at"> & { a
     ...(out.dataResult.sql === undefined ? {} : { sql: redactSecretsInText(out.dataResult.sql) }),
   };
   if (typeof out.text === "string") out.text = redactSecretsInText(out.text);
+  if (typeof out.reasoning === "string") out.reasoning = redactSecretsInText(out.reasoning);
   if (out.textParams) out.textParams = redactParams(out.textParams);
   if (out.compaction) out.compaction = { ...out.compaction, summary: redactSecretsInText(out.compaction.summary) };
   if (out.tool?.name) {

@@ -1,12 +1,13 @@
-// A bot's reply as it streams: each thread's assistant text deltas, keyed by the message id the server streams them
-// under and held outside the app reducer, so a delta re-renders only the transcript that shows that thread. A streamed
-// item stays drawn until the transcript holds the message saved under the same id, so the saved bubble replaces it in
-// the same commit.
+// A bot's reply as it streams: each thread's assistant text and reasoning deltas, keyed by the message id the server
+// streams them under and held outside the app reducer, so a delta re-renders only the transcript that shows that thread.
+// A streamed item stays drawn until the transcript holds the message saved under the same id, so the saved bubble
+// replaces it in the same commit.
 import { createContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import type { RuntimeEvent } from "../../shared/runtime-events";
 import { isClientCancellation } from "../../shared/client-cancel";
 import { redactSecretsInText } from "../../shared/redact";
+import { transferReasoningOverride } from "@/lib/reasoning-collapse";
 import type { Message } from "@/state/store";
 
 export interface LiveReplyItem {
@@ -17,6 +18,10 @@ export interface LiveReplyItem {
   /** A room reply: the member whose words these are. */
   botId?: string;
   text: string;
+  /** The model's reasoning that streamed before these words; "" for an engine that sends none. */
+  reasoning: string;
+  /** A tool ran after `reasoning`, so a later reasoning burst starts a fresh paragraph. */
+  reasoningBreak?: boolean;
   at: number;
   /** The engine finished the item; its saved message is on its way. */
   done: boolean;
@@ -77,32 +82,66 @@ const isTurnEnd = (event: RuntimeEvent) =>
   event.type === "turn.completed" || event.type === "cap.exhausted" || event.type === "session.exited" ||
   (event.type === "runtime.error" && event.terminal === true);
 
+function appendReasoning(item: LiveReplyItem, delta: string, speaker: { botId?: string }): LiveReplyItem {
+  let prefix = "";
+  if (item.reasoningBreak && item.reasoning && !item.reasoning.endsWith("\n\n")) {
+    prefix = item.reasoning.endsWith("\n") ? "\n" : "\n\n";
+  }
+  return { ...item, reasoning: item.reasoning + prefix + delta, reasoningBreak: false, ...speaker };
+}
+
 /** One live runtime frame. A frame seen before (a resumed stream replaying it) changes nothing. */
 export function noteLiveReplyEvent(event: RuntimeEvent): void {
   const { threadId } = event;
   const current = threads.get(threadId) ?? { items: EMPTY, skipping: false };
   const { items } = current;
   if (event.type === "content.delta") {
-    if (event.streamKind !== "assistant_text" || !event.delta || !firstSeen(event.eventId) || current.skipping) return;
+    if ((event.streamKind !== "assistant_text" && event.streamKind !== "reasoning_text") || !event.delta || !firstSeen(event.eventId) || current.skipping) return;
     if (gapped && !boundarySinceGap.has(threadId)) return;
+    const speaker = event.botId ? { botId: event.botId } : {};
+    if (event.streamKind === "reasoning_text") {
+      const last = items.length - 1, open = items[last];
+      if (open && !open.done && sameTurn(open, event.turnId)) {
+        put(threadId, { ...current, items: items.map((item, index) => index === last ? appendReasoning(item, event.delta, speaker) : item) });
+        return;
+      }
+      const thinking: LiveReplyItem = { key: event.eventId, ...(event.turnId ? { turnId: event.turnId } : {}), ...speaker, text: "", reasoning: event.delta, at: Date.now(), done: false };
+      put(threadId, { ...current, items: [...kept(items, (item) => item.done), thinking] });
+      return;
+    }
     const at = event.itemId ? items.findIndex((item) => item.itemId === event.itemId) : legacyOpen(items, event.turnId);
     const growing = items[at];
     if (growing) {
-      if (!growing.done) put(threadId, { ...current, items: items.map((item, index) => index === at ? { ...item, text: item.text + event.delta, ...(event.botId ? { botId: event.botId } : {}) } : item) });
+      if (!growing.done) put(threadId, { ...current, items: items.map((item, index) => index === at ? { ...item, text: item.text + event.delta, ...speaker } : item) });
+      return;
+    }
+    // Engines stream reasoning under no message id (or its own reasoning id): the reply that follows claims its row.
+    const thinking = thinkingOnly(items, event.turnId);
+    if (thinking >= 0) {
+      put(threadId, { ...current, items: items.map((item, index) => index === thinking
+        ? { ...item, ...(event.itemId ? { itemId: event.itemId } : {}), ...(event.turnId ? { turnId: event.turnId } : {}), ...speaker, text: event.delta, reasoningBreak: false }
+        : item) });
       return;
     }
     // The server opens a message only once the one before it is over: an earlier one still open never completes.
     const fresh: LiveReplyItem = { key: event.itemId ?? event.eventId, ...(event.itemId ? { itemId: event.itemId } : {}),
-      ...(event.turnId ? { turnId: event.turnId } : {}), ...(event.botId ? { botId: event.botId } : {}), text: event.delta, at: Date.now(), done: false };
+      ...(event.turnId ? { turnId: event.turnId } : {}), ...speaker, text: event.delta, reasoning: "", at: Date.now(), done: false };
     put(threadId, { ...current, items: [...kept(items, (item) => item.done), fresh] });
   } else if (event.type === "item.completed" && event.itemType === "assistant_text") {
     if (!firstSeen(event.eventId)) return;
     if (gapped) boundarySinceGap.add(threadId);
-    const at = event.itemId ? items.findIndex((item) => item.itemId === event.itemId) : legacyOpen(items, event.turnId);
-    const next = at >= 0 && !items[at]!.done ? items.map((item, index) => index === at ? { ...item, text: event.text, done: true } : item) : items;
+    const found = event.itemId ? items.findIndex((item) => item.itemId === event.itemId) : legacyOpen(items, event.turnId);
+    const at = found >= 0 ? found : thinkingOnly(items, event.turnId);
+    const next = at >= 0 && !items[at]!.done
+      ? items.map((item, index) => index === at ? { ...item, ...(event.itemId ? { itemId: event.itemId } : {}), text: event.text, reasoningBreak: false, done: true } : item)
+      : items;
     put(threadId, { items: next, skipping: false });
   } else if (event.type === "item.started" && event.itemType === "tool") {
     if (gapped) boundarySinceGap.add(threadId);
+    const open = thinkingOnly(items, event.turnId);
+    if (open >= 0 && items[open]!.reasoning && !items[open]!.reasoningBreak) {
+      put(threadId, { ...current, items: items.map((item, index) => index === open ? { ...item, reasoningBreak: true } : item) });
+    }
   } else if (event.type === "turn.started") {
     if (gapped) boundarySinceGap.add(threadId);
     // The turns before this one are over: their saved messages are in the thread's transcript by now, drawn or not.
@@ -111,6 +150,12 @@ export function noteLiveReplyEvent(event: RuntimeEvent): void {
     if (gapped) boundarySinceGap.add(threadId);
     put(threadId, { items: kept(items, isSaved), skipping: false });
   }
+}
+
+function thinkingOnly(items: readonly LiveReplyItem[], turnId: string | undefined): number {
+  const last = items.length - 1;
+  const open = items[last];
+  return open && !open.done && open.text === "" && sameTurn(open, turnId) ? last : -1;
 }
 
 /** A server older than item ids sends none: its words build the last open item of the turn until one completes. */
@@ -132,6 +177,7 @@ export function noteLiveReplyMessage(threadId: string, message: (Pick<Message, "
   if (index < 0) return;
   streamed.add(message.id);
   if (streamed.size > MAX_STREAMED) streamed.delete(streamed.values().next().value!);
+  transferReasoningOverride(`${LIVE_ID}${current.items[index]!.key}`, message.id);
   const items = current.items.map((item, at) => at === index ? { ...item, savedAs: message.id } : item);
   put(threadId, { ...current, items });
 }
@@ -163,8 +209,10 @@ export function liveReplies(threadId: string | null | undefined): readonly LiveR
 }
 
 /** Whether the thread draws a streamed reply, or one waiting for its saved message to take its place. */
-export function hasLiveReply(threadId: string | null | undefined): boolean {
-  return liveReplies(threadId).some((item) => liveReplyText(item).trim() !== "");
+export function hasLiveReply(threadId: string | null | undefined, showReasoning = false): boolean {
+  return liveReplies(threadId).some((item) =>
+    liveReplyText(item).trim() !== "" || (showReasoning && liveReplyReasoning(item).trim() !== ""),
+  );
 }
 
 /** A saved message that replaced a streamed bubble: it is already on screen, so it does not play in. */
@@ -181,6 +229,13 @@ export function liveReplyText(item: Pick<LiveReplyItem, "text" | "done">): strin
   const end = item.done ? item.text.length : Math.max(item.text.lastIndexOf(" "), item.text.lastIndexOf("\n")) + 1;
   const text = item.text.slice(0, end);
   return isClientCancellation(text) ? "" : redactSecretsInText(text);
+}
+
+/** What a streaming item's reasoning shows. Like the reply words, the trailing token waits while thinking streams. */
+export function liveReplyReasoning(item: Pick<LiveReplyItem, "reasoning" | "text" | "done" | "reasoningBreak">): string {
+  const flushed = item.done || item.text.trim() !== "" || item.reasoningBreak === true;
+  const end = flushed ? item.reasoning.length : Math.max(item.reasoning.lastIndexOf(" "), item.reasoning.lastIndexOf("\n")) + 1;
+  return redactSecretsInText(item.reasoning.slice(0, end));
 }
 
 function subscribe(threadId: string | null | undefined, listener: () => void): () => void {
@@ -202,15 +257,15 @@ export function useLiveReplies(threadId: string | null | undefined): readonly Li
   );
 }
 
-export function useHasLiveReply(threadId: string | null | undefined): boolean {
+export function useHasLiveReply(threadId: string | null | undefined, showReasoning = false): boolean {
   return useSyncExternalStore(
     (listener) => subscribe(threadId, listener),
-    () => hasLiveReply(threadId),
+    () => hasLiveReply(threadId, showReasoning),
     () => false,
   );
 }
 
-const rowCache = new WeakMap<LiveReplyItem, { text: string; message: Message }>();
+const rowCache = new WeakMap<LiveReplyItem, { text: string; reasoning: string; message: Message }>();
 const sameSpeaker = (a: Message["from"], b: Message["from"]) =>
   a === b || (a !== undefined && b !== undefined && a.botId === b.botId && a.name === b.name && a.color === b.color);
 
@@ -227,8 +282,8 @@ export function roomLiveSpeaker(members: readonly RoomMember[], speakingNow?: st
 }
 
 /** The transcript rows the live items draw, after `transcript`'s own: an item whose saved message `transcript` holds
- * draws nothing, so the two never show together. */
-export function liveReplyRows(items: readonly LiveReplyItem[], transcript: readonly (Pick<Message, "id"> & { itemId?: string })[], speaker?: LiveSpeaker): { rows: Message[]; settled: string[] } {
+ * draws nothing, so the two never show together. `showReasoning` lets an item's streamed reasoning draw above it. */
+export function liveReplyRows(items: readonly LiveReplyItem[], transcript: readonly (Pick<Message, "id"> & { itemId?: string })[], speaker?: LiveSpeaker, showReasoning = false): { rows: Message[]; settled: string[] } {
   const rows: Message[] = [];
   const settled: string[] = [];
   const ids = new Set<string>(), itemIds = new Set<string>();
@@ -242,11 +297,12 @@ export function liveReplyRows(items: readonly LiveReplyItem[], transcript: reado
       continue;
     }
     const text = liveReplyText(item);
-    if (!text.trim()) continue;
+    const reasoning = showReasoning ? liveReplyReasoning(item) : "";
+    if (!text.trim() && !reasoning.trim()) continue;
     const from = speaker?.(item.botId);
     let row = rowCache.get(item);
-    if (!row || row.text !== text || !sameSpeaker(row.message.from, from)) {
-      row = { text, message: { id: `${LIVE_ID}${item.key}`, role: "bot", kind: "text", text, at: item.at, ...(item.turnId ? { turnId: item.turnId } : {}), ...(from ? { from } : {}) } as Message };
+    if (!row || row.text !== text || row.reasoning !== reasoning || !sameSpeaker(row.message.from, from)) {
+      row = { text, reasoning, message: { id: `${LIVE_ID}${item.key}`, role: "bot", kind: "text", text, ...(reasoning.trim() ? { reasoning } : {}), at: item.at, ...(item.turnId ? { turnId: item.turnId } : {}), ...(from ? { from } : {}) } as Message };
       rowCache.set(item, row);
     }
     rows.push(row.message);
@@ -257,19 +313,19 @@ export function liveReplyRows(items: readonly LiveReplyItem[], transcript: reado
 /** The rows a transcript window draws: `windowed` (a slice of the whole `transcript`), then the live items. An item is
  * matched against the whole transcript, so one saved outside the window is not drawn again; and live rows follow the
  * newest message, so a window that stops short of it (scrolled back, or opened at a found or pinned message) draws none. */
-export function withLiveRows(items: readonly LiveReplyItem[], windowed: Message[], transcript: readonly Message[], speaker?: LiveSpeaker): { rows: Message[]; settled: string[] } {
+export function withLiveRows(items: readonly LiveReplyItem[], windowed: Message[], transcript: readonly Message[], speaker?: LiveSpeaker, showReasoning = false): { rows: Message[]; settled: string[] } {
   if (!items.length) return { rows: windowed, settled: [] };
-  const drawn = liveReplyRows(items, transcript, speaker);
+  const drawn = liveReplyRows(items, transcript, speaker, showReasoning);
   const atEnd = windowed.at(-1)?.id === transcript.at(-1)?.id;
   return { rows: atEnd && drawn.rows.length ? [...windowed, ...drawn.rows] : windowed, settled: drawn.settled };
 }
 
 /** The `windowed` rows of `transcript` with the thread's streaming reply after them; in a room, each live row names its
  * speaker from `members`. */
-export function useLiveTranscript(threadId: string, windowed: Message[], transcript: readonly Message[], members?: readonly RoomMember[], speakingNow?: string | null): Message[] {
+export function useLiveTranscript(threadId: string, windowed: Message[], transcript: readonly Message[], members?: readonly RoomMember[], speakingNow?: string | null, showReasoning = false): Message[] {
   const items = useLiveReplies(threadId);
   const speaker = useMemo(() => members && roomLiveSpeaker(members, speakingNow), [members, speakingNow]);
-  const live = useMemo(() => withLiveRows(items, windowed, transcript, speaker), [items, windowed, transcript, speaker]);
+  const live = useMemo(() => withLiveRows(items, windowed, transcript, speaker, showReasoning), [items, windowed, transcript, speaker, showReasoning]);
   useEffect(() => settleLiveReplies(threadId, live.settled), [threadId, live.settled]);
   return live.rows;
 }

@@ -1,4 +1,5 @@
 import type { NewBotDefaults, BotDefaultsProfile, BotRoutineTemplate } from "../../shared/new-bot-defaults";
+import { BOT_PROFILE_LIMITS } from "../../shared/bot-profile";
 import { api, type Bot, type ModelSelection } from "@/state/store";
 import type { BotUpdatePatch } from "@/state/bot-patch-queue";
 import type { Routine, RoutineInput } from "./routines";
@@ -116,7 +117,7 @@ export class BotCreationDraft {
     if (path === base && method === "PATCH") {
       this.patch(body); result = { bot: this.bot };
     } else if (path === `${base}/soul` && method === "GET") {
-      result = { soul: this.bot.soul, revision: "draft", bytes: new TextEncoder().encode(this.bot.soul).length, limit: 24000, file: "", drift: false };
+      result = { soul: this.bot.soul, revision: "draft", bytes: new TextEncoder().encode(this.bot.soul).length, limit: BOT_PROFILE_LIMITS.soul, file: "", drift: false };
     } else if (path === `${base}/skills` && method === "GET") {
       result = { skills: this.template.skills, staged: [] };
     } else if (path === `${base}/skills` && method === "POST") {

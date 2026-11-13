@@ -2865,7 +2865,7 @@ describe("harness HTTP API", () => {
       const state = (await api("GET", "/api/bots?messages=0")).body;
       expect(state.bots.find((bot: { id?: string }) => bot.id === createdId)?.soul).toBe(role);
       const longer = await create(`Longer analyst ${chief.id}`, `${role}x`);
-      expect(longer).toEqual({ status: 400, body: { error: "instructions must be at most 4000 characters; these are 4001. Shorten them to what this bot does and how it works, or create it with propose_team_setup, where soul takes up to 24000 bytes." } });
+      expect(longer).toEqual({ status: 400, body: { error: "instructions must be at most 4000 characters; these are 4001. Shorten them to what this bot does and how it works, or create it with propose_team_setup, where soul takes up to 60000 characters." } });
     } finally {
       if (createdId) await api("DELETE", `/api/bots/${createdId}`);
       await api("DELETE", `/api/bots/${chief.id}`);
@@ -9832,7 +9832,7 @@ describe("harness HTTP API", () => {
   it("keeps skill authoring on by default and persists an explicit opt-out", async () => {
     const before = await api("GET", "/api/config");
     expect(before.status).toBe(200);
-    expect(before.body.features).toEqual({ browser: false, skillAuthoring: true, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, sharedComputers: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, savedSteps: true, savedStepsHere: process.platform === "darwin", usbPhoneTakeover: false });
+    expect(before.body.features).toEqual({ browser: false, skillAuthoring: true, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, showReasoning: false, reasoningCollapse: "auto", conversationStyle: "bubbles", autoUpdate: true, sharedComputers: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, savedSteps: true, savedStepsHere: process.platform === "darwin", usbPhoneTakeover: false });
     const untouched = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
     expect(untouched.features?.skillAuthoring).toBeUndefined();
     expect(untouched.features?.skillReview).toBeUndefined();
@@ -9842,7 +9842,7 @@ describe("harness HTTP API", () => {
       features: { skillAuthoring: false },
     });
     expect(saved.status).toBe(200);
-    expect(saved.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, sharedComputers: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, savedSteps: true, savedStepsHere: process.platform === "darwin", usbPhoneTakeover: false });
+    expect(saved.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: false, showReasoning: false, reasoningCollapse: "auto", conversationStyle: "bubbles", autoUpdate: true, sharedComputers: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, savedSteps: true, savedStepsHere: process.platform === "darwin", usbPhoneTakeover: false });
 
     const disk = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
     // Earlier browser coverage may have persisted its own toggle: opting out must preserve sibling settings.
@@ -9850,7 +9850,22 @@ describe("harness HTTP API", () => {
 
     const tools = await api("PATCH", "/api/config", { features: { showToolCalls: true } });
     expect(tools.status).toBe(200);
-    expect(tools.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: true, sharedComputers: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, savedSteps: true, savedStepsHere: process.platform === "darwin", usbPhoneTakeover: false });
+    expect(tools.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: true, showReasoning: false, reasoningCollapse: "auto", conversationStyle: "bubbles", autoUpdate: true, sharedComputers: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, savedSteps: true, savedStepsHere: process.platform === "darwin", usbPhoneTakeover: false });
+
+    const reasoning = await api("PATCH", "/api/config", { features: { showReasoning: true, reasoningCollapse: "manual" } });
+    expect(reasoning.status).toBe(200);
+    expect(reasoning.body.features).toEqual({ browser: false, skillAuthoring: false, skillReview: false, skillReviewSteps: 10, skillsLibrary: false, shareLearnedSkills: "off", showToolCalls: true, showReasoning: true, reasoningCollapse: "manual", conversationStyle: "bubbles", autoUpdate: true, sharedComputers: false, claudeUserMcp: false, claudeUserSkills: false, autoRecall: true, roomMemoryCapture: false, parallelRoomJobs: false, llmThreadTitles: true, savedSteps: true, savedStepsHere: process.platform === "darwin", usbPhoneTakeover: false });
+
+    const style = await api("PATCH", "/api/config", { features: { conversationStyle: "openchamber" } });
+    expect(style.status).toBe(200);
+    expect(style.body.features.conversationStyle).toBe("openchamber");
+
+    const noAutoUpdate = await api("PATCH", "/api/config", { features: { autoUpdate: false } });
+    expect(noAutoUpdate.status).toBe(200);
+    expect(noAutoUpdate.body.features.autoUpdate).toBe(false);
+    const updateCheck = await api("GET", "/api/updates/check");
+    expect(updateCheck.status).toBe(200);
+    expect(updateCheck.body).toMatchObject({ available: false });
 
     const bot = (await api("POST", "/api/bots", {})).body.bot;
     try {
@@ -9865,7 +9880,7 @@ describe("harness HTTP API", () => {
       await api("DELETE", `/api/bots/${bot.id}`);
     }
 
-    await api("PATCH", "/api/config", { features: { skillAuthoring: true, showToolCalls: false } });
+    await api("PATCH", "/api/config", { features: { skillAuthoring: true, showToolCalls: false, showReasoning: false, reasoningCollapse: "auto", conversationStyle: "bubbles", autoUpdate: true } });
   });
 
   it("refuses to delete a bot while it owns an active channel turn", async () => {
@@ -13719,8 +13734,8 @@ describe("bot memory API", () => {
       expect(paired.body.bot.soul).toBe("Be kind.");
       expect(readFileSync(soulFileOf(bot.id), "utf8")).toBe("Be kind.");
 
-      const over = await api("PATCH", `/api/bots/${bot.id}`, { soul: "x".repeat(24_001) });
-      expect(over).toEqual({ status: 400, body: { error: "standing instructions must be at most 24000 bytes" } });
+      const over = await api("PATCH", `/api/bots/${bot.id}`, { soul: "x".repeat(60_001) });
+      expect(over).toEqual({ status: 400, body: { error: "standing instructions must be at most 60000 characters" } });
     } finally {
       await api("DELETE", `/api/bots/${bot.id}`);
     }
@@ -13763,7 +13778,7 @@ describe("bot memory API", () => {
         soul: "Be brief.",
         revision: expect.any(String),
         bytes: 9,
-        limit: 24_000,
+        limit: 60_000,
         file: soulFileOf(bot.id),
         drift: false,
       });
@@ -13793,9 +13808,9 @@ describe("bot memory API", () => {
       );
 
       const current = (await api("GET", `/api/bots/${bot.id}/soul`)).body;
-      writeFileSync(soulFileOf(bot.id), "x".repeat(24_001));
+      writeFileSync(soulFileOf(bot.id), "x".repeat(60_001));
       expect((await api("GET", `/api/bots/${bot.id}/soul`)).status).toBe(400);
-      expect((await api("POST", `/api/bots/${bot.id}/soul/apply-file`, { fileText: "x".repeat(24_001), expectedRevision: current.revision })).status).toBe(400);
+      expect((await api("POST", `/api/bots/${bot.id}/soul/apply-file`, { fileText: "x".repeat(60_001), expectedRevision: current.revision })).status).toBe(400);
       expect((await api("GET", "/api/bots/does-not-exist/soul")).status).toBe(404);
     } finally {
       await api("DELETE", `/api/bots/${bot.id}`);

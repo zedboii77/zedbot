@@ -10,10 +10,10 @@ describe("team manifests", () => {
     }]);
     expect(manifest.team.members[0].soul).toBe(soul);
     expect(importedMemberProfile(parseTeamManifest(manifest).team.members[0], new Set()).soul).toBe(soul);
-    manifest.team.members[0].soul = "🐭".repeat(6_000);
+    manifest.team.members[0].soul = "é".repeat(60_000);
     expect(parseTeamManifest(manifest).team.members[0].soul).toBe(manifest.team.members[0].soul);
     manifest.team.members[0].soul += "!";
-    expect(() => parseTeamManifest(manifest)).toThrow("24000 bytes");
+    expect(() => parseTeamManifest(manifest)).toThrow("60000 characters");
     delete manifest.team.members[0].soul;
     expect(importedMemberProfile(parseTeamManifest(manifest).team.members[0], new Set())).not.toHaveProperty("soul");
   });

@@ -28,7 +28,7 @@ describe("createBotFields", () => {
   });
 
   it("refuses a copy whose soul would pass the size limit", () => {
-    const big = bot("big", "Work", { soul: "x".repeat(24_000) });
+    const big = bot("big", "Work", { soul: "x".repeat(60_000) });
     expect(createBotFields({ name: "New", copyFromBotId: "big", instructions: "more" }, chief, [chief, big])).toMatchObject({ status: 400 });
   });
 });

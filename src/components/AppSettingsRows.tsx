@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, useStore, type ConfigStatus } from "@/state/store";
-import { builtInBrowserEnabled, showToolCallsEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
+import { builtInBrowserEnabled, conversationStyleMode, reasoningCollapseMode, showReasoningEnabled, showToolCallsEnabled, skillAuthoringEnabled } from "@/lib/feature-flags";
 import { localeChoices } from "@/locales";
 import { activeLocale, activePackComplete, t } from "@/lib/i18n";
 import { withTourReset } from "@/lib/guided-tour";
@@ -9,7 +9,7 @@ import { updaterMessage, useUpdaterState } from "@/lib/updater";
 import { productName } from "../lib/brand";
 import { BrowserProfilesManager } from "./BrowserProfilesManager";
 import { UsbPhoneTakeoverSettings } from "./UsbPhoneTakeoverSettings";
-import { MoreText, SettingRow, SettingsGroup, SettingsRows, Switch } from "./SettingsPrimitives";
+import { MoreText, Segmented, SettingRow, SettingsGroup, SettingsRows, Switch } from "./SettingsPrimitives";
 import { LearnedSkillsSettings } from "./ShareLearnedSkillsSettings";
 import { effortLabel } from "./ModelPicker";
 import { EFFORT_LEVELS, isEffortLevel } from "../../shared/wire";
@@ -380,6 +380,138 @@ export function ToolCallsRow() {
         disabled={saving}
         onClick={() => void toggle()}
         className="disabled:cursor-wait disabled:opacity-50"
+      />
+    </SettingRow>
+  );
+}
+
+export function ThinkingBlocksRow() {
+  const { state, dispatch } = useStore();
+  const enabled = showReasoningEnabled(state.config);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const toggle = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const config: ConfigStatus = await api("/api/config", {
+        method: "PATCH",
+        body: JSON.stringify({ features: { showReasoning: !enabled } }),
+      });
+      dispatch({ type: "configStatus", config });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("settings.reasoning.error"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SettingRow
+      title={t("settings.reasoning.title")}
+      subtitle={t("settings.reasoning.short")}
+      message={error ? <p role="alert" className="text-danger">{error}</p> : null}
+    >
+      <Switch
+        checked={enabled}
+        aria-label={t("settings.reasoning.aria")}
+        disabled={saving}
+        onClick={() => void toggle()}
+        className="disabled:cursor-wait disabled:opacity-50"
+      />
+    </SettingRow>
+  );
+}
+
+const REASONING_COLLAPSE_MODES = [
+  { value: "auto", label: "settings.reasoningCollapse.auto" },
+  { value: "manual", label: "settings.reasoningCollapse.manual" },
+] as const;
+
+export function ThinkingCollapseRow() {
+  const { state, dispatch } = useStore();
+  const enabled = showReasoningEnabled(state.config);
+  const mode = reasoningCollapseMode(state.config);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const choose = async (next: (typeof REASONING_COLLAPSE_MODES)[number]["value"]) => {
+    if (saving || next === mode) return;
+    setSaving(true);
+    setError("");
+    try {
+      const config: ConfigStatus = await api("/api/config", {
+        method: "PATCH",
+        body: JSON.stringify({ features: { reasoningCollapse: next } }),
+      });
+      dispatch({ type: "configStatus", config });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("settings.reasoningCollapse.error"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SettingRow
+      title={t("settings.reasoningCollapse.title")}
+      subtitle={t(enabled ? "settings.reasoningCollapse.short" : "settings.reasoningCollapse.needsThinking")}
+      message={error ? <p role="alert" className="text-danger">{error}</p> : null}
+    >
+      <Segmented
+        value={mode}
+        label={t("settings.reasoningCollapse.aria")}
+        disabled={saving || !enabled}
+        onChange={(next) => void choose(next)}
+        options={REASONING_COLLAPSE_MODES.map((option) => ({ value: option.value, label: t(option.label) }))}
+      />
+    </SettingRow>
+  );
+}
+
+const CONVERSATION_STYLES = [
+  { value: "bubbles", label: "settings.conversationStyle.bubbles" },
+  { value: "openchamber", label: "settings.conversationStyle.openchamber" },
+  { value: "mobile", label: "settings.conversationStyle.mobile" },
+] as const;
+
+export function ConversationStyleRow() {
+  const { state, dispatch } = useStore();
+  const mode = conversationStyleMode(state.config);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const choose = async (next: (typeof CONVERSATION_STYLES)[number]["value"]) => {
+    if (saving || next === mode) return;
+    setSaving(true);
+    setError("");
+    try {
+      const config: ConfigStatus = await api("/api/config", {
+        method: "PATCH",
+        body: JSON.stringify({ features: { conversationStyle: next } }),
+      });
+      dispatch({ type: "configStatus", config });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("settings.conversationStyle.error"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SettingRow
+      title={t("settings.conversationStyle.title")}
+      subtitle={t("settings.conversationStyle.short")}
+      message={error ? <p role="alert" className="text-danger">{error}</p> : null}
+    >
+      <Segmented
+        value={mode}
+        label={t("settings.conversationStyle.aria")}
+        disabled={saving}
+        onChange={(next) => void choose(next)}
+        options={CONVERSATION_STYLES.map((option) => ({ value: option.value, label: t(option.label) }))}
       />
     </SettingRow>
   );

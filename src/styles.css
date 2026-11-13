@@ -1297,8 +1297,30 @@
   margin-top: -4px;
 }
 /* Arabic and Hebrew script needs the taller line the rest of the app gives it. */
-[data-chat-bubble="simple"] .chat-md [dir="rtl"] {
+[data-chat-bubble="simple"] .chat-md [dir="rtl"],
+[data-chat-bubble="openchamber"] .chat-md [dir="rtl"] {
   line-height: 1.75;
+}
+[data-chat-bubble="openchamber"] .chat-md {
+  line-height: 1.65;
+}
+[data-chat-bubble="openchamber"] .chat-md > * + * {
+  margin-top: 0.65rem;
+}
+[data-chat-bubble="openchamber"] .chat-md > * + .md-heading {
+  margin-top: 1.15rem;
+}
+[data-chat-bubble="openchamber"] .chat-md > .md-heading:first-child {
+  margin-top: 0;
+}
+@media (hover: none), (pointer: coarse) {
+  [data-touch-actions]:not([inert]) {
+    pointer-events: auto;
+    opacity: 0.75;
+  }
+  [data-touch-actions][data-shown="true"]:not([inert]) {
+    opacity: 1;
+  }
 }
 
 .chat-code-actions > button:focus-visible {

@@ -2,6 +2,7 @@
 // GET and POST /api/updates/server: the Update server button, for an admin's session only (server/server-update.ts).
 import type { IncomingMessage } from "node:http";
 
+import type { ServerUpdateStatus } from "../../shared/server-update.ts";
 import type { AdminActor } from "../admin-activity.ts";
 import { serverVersion } from "../environment.ts";
 import { SERVER_ROOT } from "../proxy-paths.ts";
@@ -14,6 +15,8 @@ export interface UpdateCheckRouteDeps {
   check(): Promise<UpdateCheck>;
   server?: ServerUpdater;
   actor?(auth: RequestAuth, req: IncomingMessage): AdminActor;
+  enabled?(): boolean;
+  disabledCheck?(): UpdateCheck;
 }
 
 /** SECURITY: a person's admin session, never loopback: on a server, loopback is a bot's shell or a process beside it. This
@@ -26,13 +29,21 @@ export function mayUpdateServer(auth: RequestAuth): boolean {
 
 export function createUpdateCheckRoutes(deps: UpdateCheckRouteDeps): RouteHandler {
   return async ({ req, res, path, method, json, auth }) => {
+    const active = deps.enabled ? deps.enabled() : true;
     if (path === "/api/updates/server" && deps.server && (method === "GET" || method === "POST")) {
       if (!mayUpdateServer(auth)) return json(res, 403, { error: "Only an admin of this server, signed in, can update it.", code: "admin_only" });
-      if (method === "GET") return json(res, 200, await deps.server.status());
+      if (method === "GET") {
+        if (!active) return json(res, 200, { mode: "none", current: serverVersion(), available: false, activeTurns: 0 } satisfies ServerUpdateStatus);
+        return json(res, 200, await deps.server.status());
+      }
+      if (!active) return json(res, 403, { error: "Automatic updates are disabled.", code: "updates_disabled" });
       const done = await deps.server.request(deps.actor?.(auth, req) ?? { kind: "loopback" });
       return json(res, done.status, done.body);
     }
     if (path !== "/api/updates/check" || method !== "GET") return PASS;
+    if (!active) {
+      return json(res, 200, deps.disabledCheck?.() ?? { current: serverVersion(), install: "unknown", available: false });
+    }
     try {
       return json(res, 200, await deps.check());
     } catch (error) {
@@ -52,11 +63,18 @@ export function updateRouteDeps(where: {
   dataDir: string;
   activeTurns(): number;
   actor(auth: RequestAuth, req: IncomingMessage): AdminActor;
+  enabled?(): boolean;
 }): UpdateCheckRouteDeps {
   const install = installKind({ ...where, serverRoot: SERVER_ROOT });
   const channel = updateChannel();
   const check = createUpdateChecker({ current: serverVersion(), install, channel });
   const dir = process.env[SERVER_UPDATE_DIR_ENV]?.trim() || (install === "docker" ? SERVER_UPDATE_DIR : undefined);
   const server = createServerUpdater({ dir, dataDir: where.dataDir, install, version: serverVersion(), check, activeTurns: where.activeTurns, followsStable: channel === "stable" });
-  return { check, server, actor: where.actor };
+  return {
+    check,
+    server,
+    actor: where.actor,
+    ...(where.enabled ? { enabled: where.enabled } : {}),
+    disabledCheck: () => ({ current: serverVersion(), install, available: false }),
+  };
 }

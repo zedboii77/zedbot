@@ -65,6 +65,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   pinOn,
   transcriptShown = true,
   hasMore = false,
+  showReasoning = false,
 }: {
   ownerId: string;
   threadId: string;
@@ -72,6 +73,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   pinOn: DependencyList;
   transcriptShown?: boolean;
   hasMore?: boolean;
+  showReasoning?: boolean;
 }) {
   const focusMessage = useStoreSelector((state) => state.focusMessage);
   const olderPending = useStoreSelector((state) => Boolean(state.loadingOlder[threadId]));
@@ -123,7 +125,7 @@ export function useTranscriptViewport<T extends { id: string; role?: string }>({
   const [, setFollowShown] = useState(follow);
   const navigationCount = useRef(0);
   // A reply streaming in is followed smoothly; anything else (a switch, history loading, a sent message) lands at once.
-  const smoothFollow = useCallback(() => hasLiveReply(threadId) && !reducedMotion(), [threadId]);
+  const smoothFollow = useCallback(() => hasLiveReply(threadId, showReasoning) && !reducedMotion(), [threadId, showReasoning]);
   const followEvent = useCallback((event: TranscriptFollowEvent) => {
     const before = followNow.current.follow;
     const after = transitionTranscriptFollow(before, event);
