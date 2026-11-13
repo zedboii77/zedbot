@@ -1,3 +1,18 @@
+## ZedBot Customizations (vs. Upstream OpenMausBot `v0.1.155`)
+
+This repository is a customized build of [OpenMausBot](https://github.com/milind-soni/OpenMausBot) (`v0.1.155`) with the following added features and changes:
+
+- **OpenChamber Conversation Layout (`features.conversationStyle`)**: Added **Settings → Appearance → Chat → Conversation style** with **Bubbles** *(default)*, **OpenChamber** *(all screens)*, and **Mobile** *(`< 768px` only)* options, synced via `/api/config` and SSE across 1:1 chats and group rooms.
+  - Renders assistant replies as clean, bubble-less full-width prose (`--chat-prose-max`, expanding full column width for tables) with tighter mobile horizontal padding (`max-md:px-3.5`).
+  - Keeps user messages as right-aligned rounded bubbles (`18px` with `6px` bottom-end tail, preserving bot-colored user bubbles and in-place editing).
+  - Moves message actions and timestamps into a dedicated row below each message, with touch-visible actions (`[data-touch-actions]`) on coarse/no-hover devices once settled.
+- **Thinking / Reasoning Block Controls (`features.showReasoning`, `features.reasoningCollapse`)**: Added **Settings → Appearance → Chat → Thinking** and **Collapse thinking** (**Auto** | **Manual**).
+  - Captures streamed `reasoning_text` deltas on the server (`TurnReasoning`, up to `128,000` chars, secret-redacted and display-only — never replayed to models), persists thinking per message, and streams live thinking in 1:1 chats and rooms with seamless collapse-state handoff.
+- **Auto-Update Kill-Switch (`features.autoUpdate`, `OMB_DISABLE_AUTO_UPDATE=1`)**: Allows disabling background AI engine auto-updates, `/api/updates/check` and `/api/updates/server` updates, and Electron auto-updater via `config.json` (`features.autoUpdate: false`) or `OMB_DISABLE_AUTO_UPDATE=1`.
+- **60,000-Character Standing Instructions (`SOUL.md`) Limit**: Raised `BOT_PROFILE_LIMITS.soul` from `24,000` UTF-8 bytes to `60,000` characters across shared schemas, server validation, imports/backups, and the `SoulField` UI counter.
+
+---
+
 <div align="center">
 
 # OpenMausBot
